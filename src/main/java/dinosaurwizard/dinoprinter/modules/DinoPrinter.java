@@ -53,6 +53,7 @@ import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.RaycastContext;
 
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -262,7 +263,7 @@ public class DinoPrinter extends Module {
 
     private int placeTimer;
     private int cacheTimer;
-    private final List<BlockPos> cachedPositions = new ArrayList<>();
+    private final Set<BlockPos> cachedPositions = new ObjectOpenHashSet<>();
     private final List<BlockPrint> blockPrints = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
 
@@ -275,18 +276,20 @@ public class DinoPrinter extends Module {
 
     @Override
     public void onActivate() {
-        placedFades.clear();
-        blockPrints.clear();
         placeTimer = 0;
         cacheTimer = 0;
+        cachedPositions.clear();
+        blockPrints.clear();
+        placedFades.clear();
     }
 
     @Override
     public void onDeactivate() {
-        placedFades.clear();
-        blockPrints.clear();
         placeTimer = 0;
         cacheTimer = 0;
+        cachedPositions.clear();
+        blockPrints.clear();
+        placedFades.clear();
     }
 
     @EventHandler
@@ -382,13 +385,14 @@ public class DinoPrinter extends Module {
 
             if (!autoSwitch.get() && mc.player.getInventory().getSelectedSlot() != result.slot()) continue;
 
-            if (place(blockPrint, result)) {
-                if (render.get()) {
-                    placedFades.add(new PlacedFade(fadeTime.get(), blockPrint.blockPos));
-                }
-                cachedPositions.add(blockPrint.blockPos);
-                placedCount++;
+            place(blockPrint, result);
+
+            if (render.get()) {
+                placedFades.add(new PlacedFade(fadeTime.get(), blockPrint.blockPos));
             }
+
+            cachedPositions.add(blockPrint.blockPos);
+            placedCount++;
         }
 
         blockPrints.clear();
@@ -420,7 +424,7 @@ public class DinoPrinter extends Module {
     }
 
     // Custom placement that is far better than meteor's standard
-    private boolean place(BlockPrint blockPrint, FindItemResult result) {
+    private void place(BlockPrint blockPrint, FindItemResult result) {
         if (rotate.get() || blockPrint.shouldRotatePlace()) {
             Rotations.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
                 interactPlace(blockPrint.hit, result);
@@ -428,8 +432,6 @@ public class DinoPrinter extends Module {
         } else {
             interactPlace(blockPrint.hit, result);
         }
-
-        return true;
     }
 
     private void interactPlace(BlockHitResult hit, FindItemResult result) {
