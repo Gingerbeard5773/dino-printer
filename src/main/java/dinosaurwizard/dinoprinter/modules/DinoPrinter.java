@@ -38,6 +38,7 @@ import net.minecraft.block.*;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemPlacementContext;
+import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.Hand;
@@ -236,6 +237,13 @@ public class DinoPrinter extends Module {
     );
 
     // Render
+
+    private final Setting<Boolean> swing = sgRender.add(new BoolSetting.Builder()
+        .name("swing")
+        .description("Render your hand swinging when placing blocks.")
+        .defaultValue(true)
+        .build()
+    );
 
     private final Setting<Boolean> render = sgRender.add(new BoolSetting.Builder()
         .name("render")
@@ -447,7 +455,8 @@ public class DinoPrinter extends Module {
         InvUtils.swap(result.slot(), swapBack.get());
 
         if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, hit).isAccepted()) {
-            mc.player.swingHand(Hand.MAIN_HAND);
+            if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
+            else mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
         }
 
         if (swapBack.get()) InvUtils.swapBack();
