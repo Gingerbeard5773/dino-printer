@@ -1,0 +1,9 @@
+{
+  "tags": ["Building", "World"],
+  "supported_versions": ["1.21.11"],
+  "feature_directories": {
+    "commands": [],
+    "modules": ["modules"],
+    "hud_elements": []
+  }
+}
