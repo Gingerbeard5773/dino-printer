@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "dino-printer",
+  "version": "${version}",
+  "name": "Dino Printer",
+  "description": "A robust printer for litematica schematics, designed for all anti-cheats.",
+  "authors": ["dinosaurwizard"],
+  "contact": {
+    "repo": "https://github.com/Gingerbeard5773/dino-printer",
+    "sources": "https://github.com/Gingerbeard5773/dino-printer",
+    "issues": "https://github.com/Gingerbeard5773/dino-printer/issues"
+  },
+  "icon": "assets/dinoprinter/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "meteor": ["dinosaurwizard.dinoprinter.DinoPrinterAddon"]
+  },
+  "mixins": [],
+  "custom": {
+    "meteor-client:color": "28,255,239",
+    "modmenu": {
+      "parent": {
+        "id": "meteor-client"
+      }
+    }
+  },
+  "depends": {
+    "java": ">=21",
+    "minecraft": ["${mc_version}"],
+    "meteor-client": "*"
+  }
+}
