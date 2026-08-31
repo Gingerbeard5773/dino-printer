@@ -198,6 +198,15 @@ public class DinoPrinter extends Module {
         .build()
     );
 
+    private final Setting<Integer> inventoryMoveDelay = sgInventory.add(new IntSetting.Builder()
+        .name("inventory-move-delay")
+        .description("The tick delay that your printer will be paused when moving items into your hotbar.")
+        .defaultValue(4)
+        .range(0, 10)
+        .visible(() -> autoSwitch.get() && allowInventory.get())
+        .build()
+    );
+
     private final Setting<Boolean> stationaryMove = sgInventory.add(new BoolSetting.Builder()
         .name("stationary-move")
         .description("Only allows blocks to be moved from your inventory if you are standing still. Required for certain anti-cheats.")
@@ -383,8 +392,9 @@ public class DinoPrinter extends Module {
                     int slotToUse = getSwapSlotToUse();
                     InvUtils.quickSwap().fromId(slotToUse).to(result.slot());
 
-                    // It takes a tick for the server to register a swap, so exit out now.
+                    // It takes time for the server to register a swap, so exit out now.
                     blockPrints.clear();
+                    placeTimer = placeDelay.get() - inventoryMoveDelay.get();
                     return;
                 }
             }
