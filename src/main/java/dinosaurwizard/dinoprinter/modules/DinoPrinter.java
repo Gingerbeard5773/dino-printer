@@ -63,6 +63,7 @@ import java.util.Set;
 
 public class DinoPrinter extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
+    private final SettingGroup sgAdvanced = settings.createGroup("Advanced");
     private final SettingGroup sgInventory = settings.createGroup("Inventory");
     private final SettingGroup sgPause = settings.createGroup("Pause");
     private final SettingGroup sgRender = settings.createGroup("Render");
@@ -122,35 +123,6 @@ public class DinoPrinter extends Module {
         .build()
     );
 
-    private final Setting<Boolean> rotationPlace = sgGeneral.add(new BoolSetting.Builder()
-        .name("rotation-place")
-        .description("Respect block rotation.")
-        .defaultValue(false)
-        .build()
-    );
-
-    private final Setting<Boolean> strictRotation = sgGeneral.add(new BoolSetting.Builder()
-        .name("strict-rotation")
-        .description("Determines if rotatable blocks can only be placed legitimently.")
-        .defaultValue(false)
-        .visible(rotationPlace::get)
-        .build()
-    );
-
-    private final Setting<Boolean> halfBlocks = sgGeneral.add(new BoolSetting.Builder()
-        .name("half-blocks")
-        .description("Respect block half. Necessary for properly placing slabs and stairs.")
-        .defaultValue(true)
-        .build()
-    );
-
-    private final Setting<Boolean> miscStates = sgGeneral.add(new BoolSetting.Builder()
-        .name("misc-states")
-        .description("Respect miscellaneous states. Blocks like doors, hanging signs, and levers are affected. ")
-        .defaultValue(true)
-        .build()
-    );
-
     private final Setting<Boolean> rotate = sgGeneral.add(new BoolSetting.Builder()
         .name("rotate")
         .description("Rotates towards the blocks being placed.")
@@ -170,6 +142,37 @@ public class DinoPrinter extends Module {
         .description("Second pass of sorting eg. place first blocks higher and closest to you.")
         .defaultValue(SortingSecond.None)
         .visible(()-> firstAlgorithm.get().applySecondSorting)
+        .build()
+    );
+
+    // Advanced
+
+    private final Setting<Boolean> rotationPlace = sgAdvanced.add(new BoolSetting.Builder()
+        .name("rotation-place")
+        .description("Respect block rotation.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> strictRotation = sgAdvanced.add(new BoolSetting.Builder()
+        .name("strict-rotation")
+        .description("Determines if rotatable blocks can only be placed legitimently.")
+        .defaultValue(false)
+        .visible(rotationPlace::get)
+        .build()
+    );
+
+    private final Setting<Boolean> halfBlocks = sgAdvanced.add(new BoolSetting.Builder()
+        .name("half-blocks")
+        .description("Respect block half. Necessary for properly placing slabs and stairs.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> miscStates = sgAdvanced.add(new BoolSetting.Builder()
+        .name("misc-states")
+        .description("Respect miscellaneous states. Blocks like doors, hanging signs, and levers are affected. ")
+        .defaultValue(true)
         .build()
     );
 
