@@ -586,10 +586,12 @@ public class DinoPrinter extends Module {
                         return placeHit;
                     }
                 }
+            }
 
-                // If we couldn't find a block to place onto for this direction,
-                // Check points on our own block position for an air place
-                if (airPlace.get()) {
+            // If we couldn't find an adjacent block to place onto
+            // Check points on our own block position for air placement
+            if (airPlace.get()) {
+                for (Direction direction : Direction.values()) {
                     Set<Vec3d> airPoints = getShapeFacePoints(blockPos, direction);
                     for (Vec3d point : airPoints) {
                         if (!isPointValid(point, blockPos, direction)) continue;
