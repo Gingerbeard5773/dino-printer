@@ -37,6 +37,7 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.*;
+import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemPlacementContext;
@@ -173,7 +174,7 @@ public class DinoPrinter extends Module {
 
     private final Setting<Boolean> miscStates = sgAdvanced.add(new BoolSetting.Builder()
         .name("misc-states")
-        .description("Respect miscellaneous states. Blocks like doors, hanging signs, and levers are affected. ")
+        .description("Respect miscellaneous states. Blocks like doors, beds, and lanterns are affected. ")
         .defaultValue(true)
         .build()
     );
@@ -346,13 +347,13 @@ public class DinoPrinter extends Module {
             // Blacklisted states
             if (!required.getFluidState().isEmpty() || required.isAir()) return;
 
-            // Dont place in a position we already attempted
+            // Don't place in a position we already attempted
             if (cachedPositions.contains(blockPos)) return;
 
             // Only rendered schematic blocks can be placed
             if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) return;
 
-            // Spot must be have no entities overlapping and is below world height
+            // Spot must have no entities overlapping and is below world height
             if (!BlockUtils.canPlace(blockPos)) return;
 
             // Check if legally placeable. For example, if its a torch, it can only be placed onto another block.
@@ -560,8 +561,10 @@ public class DinoPrinter extends Module {
         private BlockState getSimulatedPlaceState(float yaw, float pitch, BlockHitResult blockHit) {
             Block block = required.getBlock();
             ItemStack stack = block.asItem().getDefaultStack();
+            if (!(stack.getItem() instanceof BlockItem blockItem)) return null;
+
             ItemPlacementContext context = new PrinterPlaceContext(mc.player, yaw, pitch, Hand.MAIN_HAND, stack, blockHit);
-            return block.getPlacementState(context);
+            return blockItem.getPlacementState(context);
         }
 
         // Gives the best possible hit result using relevant requirements
@@ -619,7 +622,10 @@ public class DinoPrinter extends Module {
             BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
             if (simulated == null) return false;
 
-            // Block Half - slabs and stairs etc.
+            // Unequal blocks get booted. e.g standing signs vs wall signs
+            if (required.getBlock() != simulated.getBlock()) return false;
+
+            // Block Half - slabs, stairs, trapdoors
             if (halfBlocks.get()) {
                 if (required.contains(Properties.SLAB_TYPE) && simulated.contains(Properties.SLAB_TYPE)) {
                     if (required.get(Properties.SLAB_TYPE) != simulated.get(Properties.SLAB_TYPE)) return false;
@@ -647,6 +653,11 @@ public class DinoPrinter extends Module {
                 // Hanging - lanterns
                 if (required.contains(Properties.HANGING) && simulated.contains(Properties.HANGING)) {
                     if (required.get(Properties.HANGING) != simulated.get(Properties.HANGING)) return false;
+                }
+
+                // Bed Part - beds
+                if (required.contains(Properties.BED_PART) && simulated.contains(Properties.BED_PART)) {
+                    if (required.get(Properties.BED_PART) != simulated.get(Properties.BED_PART)) return false;
                 }
             }
 

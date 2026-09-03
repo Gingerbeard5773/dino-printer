@@ -11,6 +11,7 @@
     "issues": "https://github.com/Gingerbeard5773/dino-printer/issues"
   },
   "icon": "assets/dinoprinter/icon.png",
+  "accessWidener" : "dinoprinter.classtweaker",
   "environment": "client",
   "entrypoints": {
     "meteor": ["dinosaurwizard.dinoprinter.DinoPrinterAddon"]

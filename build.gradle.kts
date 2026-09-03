@@ -42,6 +42,10 @@ dependencies {
     modImplementation(libs.malilib)
 }
 
+loom {
+    accessWidenerPath = file("src/main/resources/dinoprinter.classtweaker")
+}
+
 tasks {
     processResources {
         val propertyMap = mapOf(
