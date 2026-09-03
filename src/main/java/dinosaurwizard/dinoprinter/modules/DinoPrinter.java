@@ -9,6 +9,8 @@
 
 package dinosaurwizard.dinoprinter.modules;
 
+import dinosaurwizard.dinoprinter.utils.PrinterPlaceContext;
+
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
@@ -558,23 +560,10 @@ public class DinoPrinter extends Module {
         // The simulated place state is effectively the blockState when it is actually placed, allowing us to determine what it will look like before it is placed.
         // This can be used to compare certain attributes such as the facing direction.
         private BlockState getSimulatedPlaceState(float yaw, float pitch, BlockHitResult blockHit) {
-            float oldYaw = mc.player.getYaw();
-            float oldPitch = mc.player.getPitch();
-
-            // Set rotation for proper calculation
-            mc.player.setYaw(yaw);
-            mc.player.setPitch(pitch);
-
             Block block = required.getBlock();
             ItemStack stack = block.asItem().getDefaultStack();
-            ItemPlacementContext context = new ItemPlacementContext(mc.player, Hand.MAIN_HAND, stack, blockHit);
-            BlockState placeState = block.getPlacementState(context);
-
-            // Return rotation back to normal
-            mc.player.setYaw(oldYaw);
-            mc.player.setPitch(oldPitch);
-
-            return placeState;
+            ItemPlacementContext context = new PrinterPlaceContext(mc.player, yaw, pitch, Hand.MAIN_HAND, stack, blockHit);
+            return block.getPlacementState(context);
         }
 
         // Gives the best possible hit result using relevant requirements
