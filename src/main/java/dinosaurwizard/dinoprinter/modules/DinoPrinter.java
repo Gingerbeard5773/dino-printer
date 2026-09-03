@@ -31,7 +31,6 @@ import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.world.BlockIterator;
-import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
@@ -56,6 +55,7 @@ import net.minecraft.util.PlayerInput;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.RaycastContext;
+import net.minecraft.world.World;
 
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.ArrayList;
@@ -342,7 +342,7 @@ public class DinoPrinter extends Module {
             if (!existing.isReplaceable()) return;
 
             // Spot cannot be required blockstate
-            if (existing.getBlock() == required.getBlock()) return;
+            if (required.getBlock() == existing.getBlock()) return;
 
             // Blacklisted states
             if (!required.getFluidState().isEmpty() || required.isAir()) return;
@@ -353,15 +353,18 @@ public class DinoPrinter extends Module {
             // Only rendered schematic blocks can be placed
             if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) return;
 
-            // Spot must have no entities overlapping and is below world height
-            if (!BlockUtils.canPlace(blockPos)) return;
+            // Must be within world boundaries
+            if (!World.isValid(blockPos)) return;
 
             // Check if legally placeable. For example, if its a torch, it can only be placed onto another block.
             if (!required.canPlaceAt(mc.world, blockPos)) return;
 
+            // No intersecting entities at our position
+            if (!mc.world.canPlace(required, blockPos, ShapeContext.absent())) return;
+
             BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required);
 
-            // Block specific requirements must be met from our printer.
+            // Block specific requirements must be met
             if (!blockPrint.canPlace()) return;
 
             blockPrints.add(blockPrint);
