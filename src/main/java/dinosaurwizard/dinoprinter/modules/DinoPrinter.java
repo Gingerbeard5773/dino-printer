@@ -269,8 +269,9 @@ public class DinoPrinter extends Module {
     private final Setting<Integer> fadeTime = sgRender.add(new IntSetting.Builder()
         .name("fade-time")
         .description("Time for the rendering to fade, in ticks.")
-        .defaultValue(4)
-        .range(0, 10)
+        .defaultValue(8)
+        .min(0)
+        .sliderMax(20)
         .visible(render::get)
         .build()
     );
@@ -316,10 +317,6 @@ public class DinoPrinter extends Module {
 
     @EventHandler
     private void onTickPre(TickEvent.Pre event) {
-        // Tick or remove each fade
-        placedFades.forEach(fade -> fade.ticks--);
-        placedFades.removeIf(fade -> fade.ticks <= 0);
-
         WorldSchematic worldSchematic = SchematicWorldHandler.getSchematicWorld();
         if (worldSchematic == null) {
             toggle();
@@ -411,7 +408,7 @@ public class DinoPrinter extends Module {
             place(blockPrint, result);
 
             if (render.get()) {
-                placedFades.add(new PlacedFade(fadeTime.get(), blockPrint.blockPos));
+                placedFades.add(new PlacedFade((float) fadeTime.get(), blockPrint.blockPos));
             }
 
             cachedPositions.add(blockPrint.blockPos);
@@ -815,10 +812,10 @@ public class DinoPrinter extends Module {
     /// Rendering
 
     private static class PlacedFade {
-        public int ticks;
+        public float ticks;
         public final BlockPos pos;
 
-        PlacedFade(int ticks, BlockPos pos) {
+        PlacedFade(float ticks, BlockPos pos) {
             this.ticks = ticks;
             this.pos = pos;
         }
@@ -826,11 +823,15 @@ public class DinoPrinter extends Module {
 
     @EventHandler
     private void onRender(Render3DEvent event) {
-        placedFades.forEach(fade -> {
+        placedFades.removeIf(fade -> {
+            fade.ticks -= event.tickDelta;
+            if (fade.ticks <= 0) return true;
+
             Color fadedColor = new Color(color.get());
-            int alpha = (int)(((float) fade.ticks / (float) fadeTime.get()) * color.get().a);
+            int alpha = (int) ((fade.ticks / fadeTime.get()) * color.get().a);
             fadedColor.a(alpha);
             event.renderer.box(fade.pos, fadedColor, null, ShapeMode.Sides, 0);
+            return false;
         });
     }
 
