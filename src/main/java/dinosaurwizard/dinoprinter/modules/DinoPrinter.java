@@ -289,8 +289,8 @@ public class DinoPrinter extends Module {
     private final List<BlockPrint> blockPrints = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
 
-    // Air shape is the air place shape. It is slightly smaller than a normal minecraft block.
-    private static final VoxelShape airShape = VoxelShapes.cuboid(0.01, 0.01, 0.01, 1.0 - 0.01, 1.0 - 0.01, 1.0 - 0.01);
+    // AIR SHAPE is the shape that air-place utilizes. It is slightly smaller than a normal minecraft block.
+    private static final VoxelShape AIR_SHAPE = VoxelShapes.cuboid(0.01, 0.01, 0.01, 1.0 - 0.01, 1.0 - 0.01, 1.0 - 0.01);
 
     public DinoPrinter() {
         super(Categories.World, "dino-printer", "Prints rendered litematica schematics.");
@@ -539,7 +539,8 @@ public class DinoPrinter extends Module {
                    required.contains(Properties.AXIS) ||
                    required.contains(Properties.HOPPER_FACING) ||
                    required.contains(Properties.ORIENTATION) ||
-                   required.contains(Properties.VERTICAL_DIRECTION);
+                   required.contains(Properties.VERTICAL_DIRECTION) || 
+                   required.contains(Properties.ROTATION);
         }
 
         // Yaw when placing the block
@@ -634,7 +635,7 @@ public class DinoPrinter extends Module {
                     if (required.get(Properties.DOOR_HINGE) != simulated.get(Properties.DOOR_HINGE)) return false;
                 }
 
-                // Block Face - levers
+                // Block Face - wall mounted blocks like torches or levers
                 if (required.contains(Properties.BLOCK_FACE) && simulated.contains(Properties.BLOCK_FACE)) {
                     if (required.get(Properties.BLOCK_FACE) != simulated.get(Properties.BLOCK_FACE)) return false;
                 }
@@ -642,6 +643,11 @@ public class DinoPrinter extends Module {
                 // Attachment - hanging signs
                 if (required.contains(Properties.ATTACHMENT) && simulated.contains(Properties.ATTACHMENT)) {
                     if (required.get(Properties.ATTACHMENT) != simulated.get(Properties.ATTACHMENT)) return false;
+                }
+
+                // Hanging - lanterns
+                if (required.contains(Properties.HANGING) && simulated.contains(Properties.HANGING)) {
+                    if (required.get(Properties.HANGING) != simulated.get(Properties.HANGING)) return false;
                 }
             }
 
@@ -668,12 +674,14 @@ public class DinoPrinter extends Module {
                 if (required.get(Properties.ORIENTATION) != simulated.get(Properties.ORIENTATION)) return false;
             } else if (required.contains(Properties.VERTICAL_DIRECTION) && simulated.contains(Properties.VERTICAL_DIRECTION)) {
                 if (required.get(Properties.VERTICAL_DIRECTION) != simulated.get(Properties.VERTICAL_DIRECTION)) return false;
+            } else if (required.contains(Properties.ROTATION) && simulated.contains(Properties.ROTATION)) {
+                if (required.get(Properties.ROTATION) != simulated.get(Properties.ROTATION)) return false;
             }
 
             return true;
         }
 
-        // Calculate rotation from a hit. Also calculates necessary Yaw and Pitch the player should use when placing the block.
+        // Calculate rotation from a hit. Also sets Yaw and Pitch the player should use when placing the block.
         private boolean isValidRotationHit(BlockHitResult blockHit) {
             if (!rotationPlace.get()) return true;
 
@@ -684,10 +692,12 @@ public class DinoPrinter extends Module {
 
             // Hack rotation calculation
             if (!strictRotation.get()) {
-                for (Direction rotateDirection : Direction.values()) {
-                    float rotateYaw = getHackYaw(legitYaw, rotateDirection);
-                    float rotatePitch = getHackPitch(legitPitch, rotateDirection);
-                    if (isMatchingFacingFromHit(rotateYaw, rotatePitch, blockHit)) {
+                List<Float> yaws = getSimulationYaws(legitYaw);
+                List<Float> pitches = getSimulationPitches(legitPitch);
+                for (float rotateYaw : yaws) {
+                    for (float rotatePitch : pitches) {
+                        if (!isMatchingFacingFromHit(rotateYaw, rotatePitch, blockHit)) continue;
+
                         placeYaw = rotateYaw;
                         placePitch = rotatePitch;
                         useHackRotation = true;
@@ -721,7 +731,7 @@ public class DinoPrinter extends Module {
             Set<Vec3d> points = new LinkedHashSet<>();
 
             BlockState blockState = mc.world.getBlockState(pos);
-            VoxelShape shape = blockState.isReplaceable() ? airShape : blockState.getOutlineShape(mc.world, pos);
+            VoxelShape shape = blockState.isReplaceable() ? AIR_SHAPE : blockState.getOutlineShape(mc.world, pos);
 
             final double[] samples = {1.0 / 6.0, 0.5, 5.0 / 6.0};
 
@@ -757,23 +767,47 @@ public class DinoPrinter extends Module {
             return points;
         }
 
-        // Yaw to use when doing 'hack' rotation
-        private float getHackYaw(float legitYaw, Direction direction) {
-            if (direction == Direction.UP || direction == Direction.DOWN) {
-                return legitYaw;
-            }
+        // Yaws to simulate when placing blocks with the ROTATION property. e.g signs, banners
+        private static final List<Float> ROTATION_YAWS = List.of(
+            0.0f, 22.5f, 45.0f, 67.5f,
+            90.0f, 112.5f, 135.0f, 157.5f,
+            180.0f, 202.5f, 225.0f, 247.5f,
+            270.0f, 292.5f, 315.0f, 337.5f
+        );
 
-            return direction.getPositiveHorizontalDegrees();
+        // Yaws to simulate when placing rotatable blocks
+        private static final List<Float> CARDINAL_YAWS = List.of(
+            0.0f, 90.0f, 180.0f, 270.0f
+        );
+
+        // Pitches to simulate when placing rotatable blocks
+        private static final List<Float> VERTICAL_PITCHES = List.of(
+            0.0f, 90.0f, -90.0f
+        );
+
+        // Gets a series of yaws to simulate when placing
+        private List<Float> getSimulationYaws(float legitYaw) {
+            if (required.contains(Properties.ROTATION)) {
+                return ROTATION_YAWS;
+            } else if (required.contains(Properties.HORIZONTAL_FACING) ||
+                required.contains(Properties.FACING) ||
+                required.contains(Properties.BLOCK_FACE) ||
+                required.contains(Properties.ORIENTATION)) {
+                return CARDINAL_YAWS;
+            }
+            return List.of(legitYaw);
         }
 
-        // Pitch to use when doing 'hack' rotation
-        private float getHackPitch(float legitPitch, Direction direction) {
-            float pitch = switch (direction) {
-                case UP -> -90.0f;
-                case DOWN -> 90.0f;
-                default -> legitPitch;
-            };
-            return pitch;
+        // Gets a series of pitches to simulate when placing
+        private List<Float> getSimulationPitches(float legitPitch) {
+            if (required.contains(Properties.FACING) ||
+                required.contains(Properties.VERTICAL_DIRECTION) ||
+                required.contains(Properties.ORIENTATION) ||
+                required.contains(Properties.BLOCK_FACE) ||
+                required.contains(Properties.ROTATION)) {
+                return VERTICAL_PITCHES;
+            }
+            return List.of(legitPitch);
         }
     }
 
