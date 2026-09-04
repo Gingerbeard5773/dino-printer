@@ -15,6 +15,7 @@ import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
@@ -36,6 +37,7 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.*;
+import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -153,7 +155,7 @@ public class DinoPrinter extends Module {
     private final Setting<Boolean> rotationPlace = sgAdvanced.add(new BoolSetting.Builder()
         .name("rotation-place")
         .description("Respect block rotation.")
-        .defaultValue(false)
+        .defaultValue(true)
         .build()
     );
 
@@ -175,6 +177,13 @@ public class DinoPrinter extends Module {
     private final Setting<Boolean> miscStates = sgAdvanced.add(new BoolSetting.Builder()
         .name("misc-states")
         .description("Respect miscellaneous states. Blocks like doors, beds, and lanterns are affected. ")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> exitSigns = sgAdvanced.add(new BoolSetting.Builder()
+        .name("exit-signs")
+        .description("Auto exit sign screens.")
         .defaultValue(true)
         .build()
     );
@@ -290,6 +299,7 @@ public class DinoPrinter extends Module {
     private final Set<BlockPos> cachedPositions = new ObjectOpenHashSet<>();
     private final List<BlockPrint> blockPrints = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
+    private long lastSignPlaceTime = 0;
 
     // AIR SHAPE is the shape that air-place utilizes. It is slightly smaller than a normal minecraft block.
     private static final VoxelShape AIR_SHAPE = VoxelShapes.cuboid(0.01, 0.01, 0.01, 1.0 - 0.01, 1.0 - 0.01, 1.0 - 0.01);
@@ -305,6 +315,7 @@ public class DinoPrinter extends Module {
         cachedPositions.clear();
         blockPrints.clear();
         placedFades.clear();
+        lastSignPlaceTime = 0;
     }
 
     @Override
@@ -314,6 +325,7 @@ public class DinoPrinter extends Module {
         cachedPositions.clear();
         blockPrints.clear();
         placedFades.clear();
+        lastSignPlaceTime = 0;
     }
 
     @EventHandler
@@ -409,6 +421,10 @@ public class DinoPrinter extends Module {
 
             if (!autoSwitch.get() && mc.player.getInventory().getSelectedSlot() != result.slot()) continue;
 
+            if (exitSigns.get() && blockPrint.required.getBlock() instanceof AbstractSignBlock) {
+                lastSignPlaceTime = System.currentTimeMillis();
+            }
+
             place(blockPrint, result);
 
             if (render.get()) {
@@ -421,6 +437,15 @@ public class DinoPrinter extends Module {
 
         blockPrints.clear();
         placeTimer = 0;
+    }
+
+    @EventHandler
+    private void onOpenScreen(OpenScreenEvent event) {
+        // Cancel sign screens when applicable
+        if (!exitSigns.get() || !(event.screen instanceof AbstractSignEditScreen)) return;
+        if (System.currentTimeMillis() - lastSignPlaceTime > 500) return;
+
+        event.setCancelled(true);
     }
 
     private boolean shouldPause() {
