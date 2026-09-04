@@ -37,6 +37,7 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.*;
+import net.minecraft.block.enums.SlabType;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
@@ -169,7 +170,14 @@ public class DinoPrinter extends Module {
 
     private final Setting<Boolean> halfBlocks = sgAdvanced.add(new BoolSetting.Builder()
         .name("half-blocks")
-        .description("Respect block half. Necessary for properly placing slabs and stairs.")
+        .description("Respect block half. Necessary for properly placing slabs, stairs and trapdoors.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> incrementalStates = sgAdvanced.add(new BoolSetting.Builder()
+        .name("incremental-states")
+        .description("Respect states that need multiple placements. Necessary for double-slabs, candles, sea pickles, and snow layers.")
         .defaultValue(true)
         .build()
     );
@@ -351,20 +359,23 @@ public class DinoPrinter extends Module {
         // Find print locations
         BlockIterator.register((int) Math.ceil(placeRange.get()), (int) Math.ceil(placeRange.get()), (blockPos, existing) -> {
             BlockState required = worldSchematic.getBlockState(blockPos);
-            // Spot must be air or some other replaceable block
-            if (!existing.isReplaceable()) return;
 
-            // Spot cannot be required blockstate
-            if (required.getBlock() == existing.getBlock()) return;
+            // Blacklisted states
+            if (required.isAir() || !required.getFluidState().isEmpty()) return;
+
+            if (!isIncremental(required, existing)) {
+                // Spot must be air or some other replaceable block
+                if (!existing.isReplaceable()) return;
+
+                // Spot cannot be required blockstate
+                if (required.getBlock() == existing.getBlock()) return;
+
+                // Don't place in a position we already attempted
+                if (cachedPositions.contains(blockPos)) return;
+            }
 
             // Don't place in a position we are rotating towards already
             if (rotatePositions.contains(blockPos)) return;
-
-            // Blacklisted states
-            if (!required.getFluidState().isEmpty() || required.isAir()) return;
-
-            // Don't place in a position we already attempted
-            if (cachedPositions.contains(blockPos)) return;
 
             // Only rendered schematic blocks can be placed
             if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) return;
@@ -378,7 +389,7 @@ public class DinoPrinter extends Module {
             // No intersecting entities at our position
             if (!mc.world.canPlace(required, blockPos, ShapeContext.absent())) return;
 
-            BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required);
+            BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required, existing);
 
             // Block specific requirements must be met
             if (!blockPrint.canPlace()) return;
@@ -450,6 +461,26 @@ public class DinoPrinter extends Module {
         if (System.currentTimeMillis() - lastSignPlaceTime > 500) return;
 
         event.setCancelled(true);
+    }
+
+    // Determines if we can place again to increment the block state.
+    private boolean isIncremental(BlockState wanted, BlockState current) {
+        if (!incrementalStates.get()) return false;
+
+        if (wanted.getBlock() != current.getBlock()) return false;
+
+        if (wanted.contains(Properties.SLAB_TYPE) && current.contains(Properties.SLAB_TYPE)) {
+            return wanted.get(Properties.SLAB_TYPE) == SlabType.DOUBLE && current.get(Properties.SLAB_TYPE) != SlabType.DOUBLE;
+        } else if (wanted.contains(Properties.LAYERS) && current.contains(Properties.LAYERS)) {
+            return wanted.get(Properties.LAYERS) > current.get(Properties.LAYERS);
+        } else if (wanted.contains(Properties.EGGS) && current.contains(Properties.EGGS)) {
+            return wanted.get(Properties.EGGS) > current.get(Properties.EGGS);
+        } else if (wanted.contains(Properties.CANDLES) && current.contains(Properties.CANDLES)) {
+            return wanted.get(Properties.CANDLES) > current.get(Properties.CANDLES);
+        } else if (wanted.contains(Properties.PICKLES) && current.contains(Properties.PICKLES)) {
+            return wanted.get(Properties.PICKLES) > current.get(Properties.PICKLES);
+        }
+        return false;
     }
 
     private boolean shouldPause() {
@@ -543,14 +574,16 @@ public class DinoPrinter extends Module {
     private class BlockPrint {
         public final BlockPos blockPos;
         public final BlockState required;
+        public final BlockState existing;
         public final BlockHitResult hit;
         private float placeYaw;
         private float placePitch;
         private boolean useHackRotation = false;
 
-        BlockPrint(BlockPos blockPos, BlockState required) {
+        BlockPrint(BlockPos blockPos, BlockState required, BlockState existing) {
             this.blockPos = blockPos;
             this.required = required;
+            this.existing = existing;
             this.hit = calculateBestPlaceHit();
         }
 
@@ -563,7 +596,7 @@ public class DinoPrinter extends Module {
             return rotationPlace.get() && isRotatable();
         }
 
-        // Determine if our required blockstate is a rotatable block with directionality.
+        // Determine if our required blockstate has directionality.
         private boolean isRotatable() {
             return required.contains(Properties.FACING) || 
                    required.contains(Properties.HORIZONTAL_FACING) ||
@@ -625,22 +658,22 @@ public class DinoPrinter extends Module {
                 }
             }
 
-            // If we couldn't find an adjacent block to place onto
-            // Check points on our own block position for air placement
-            if (airPlace.get()) {
+            // If we couldn't find an adjacent block to place onto, check points on our own block position
+            // Only for air placement or if we have an incremental block
+            if (airPlace.get() || isIncremental(required, existing)) {
                 for (Direction direction : Direction.values()) {
-                    Set<Vec3d> airPoints = getShapeFacePoints(blockPos, direction);
-                    for (Vec3d point : airPoints) {
+                    Set<Vec3d> points = getShapeFacePoints(blockPos, direction);
+                    for (Vec3d point : points) {
                         if (!isPointValid(point, blockPos, direction)) continue;
 
-                        BlockHitResult airPlaceHit = new BlockHitResult(point, direction, blockPos, false);
+                        BlockHitResult placeHit = new BlockHitResult(point, direction.getOpposite(), blockPos, false);
 
-                        if (!isMatchingPropertiesFromHit(airPlaceHit)) continue;
+                        if (!isMatchingPropertiesFromHit(placeHit)) continue;
 
-                        if (!isValidRotationHit(airPlaceHit)) continue;
+                        if (!isValidRotationHit(placeHit)) continue;
 
-                        // airPlaceHit passed all requirements
-                        return airPlaceHit;
+                        // placeHit passed all requirements
+                        return placeHit;
                     }
                 }
             }
@@ -659,10 +692,19 @@ public class DinoPrinter extends Module {
             // Unequal blocks get booted. e.g standing signs vs wall signs
             if (required.getBlock() != simulated.getBlock()) return false;
 
-            // Block Half - slabs, stairs, trapdoors
             if (halfBlocks.get()) {
+                // Slab Type - half slabs & also handling of double slabs
                 if (required.contains(Properties.SLAB_TYPE) && simulated.contains(Properties.SLAB_TYPE)) {
-                    if (required.get(Properties.SLAB_TYPE) != simulated.get(Properties.SLAB_TYPE)) return false;
+                    SlabType requiredType = required.get(Properties.SLAB_TYPE);
+                    SlabType simulatedType = simulated.get(Properties.SLAB_TYPE);
+                    if (requiredType == SlabType.DOUBLE) {
+                        if (existing.contains(Properties.SLAB_TYPE)) {
+                            if (simulatedType != SlabType.DOUBLE) return false;
+                        }
+                    } else {
+                        if (requiredType != simulatedType) return false;
+                    }
+                // Block Half - stairs, trapdoors
                 } else if (required.contains(Properties.BLOCK_HALF) && simulated.contains(Properties.BLOCK_HALF)) {
                     if (required.get(Properties.BLOCK_HALF) != simulated.get(Properties.BLOCK_HALF)) return false;
                 }
@@ -672,27 +714,32 @@ public class DinoPrinter extends Module {
                 // Door Hinge - doors
                 if (required.contains(Properties.DOOR_HINGE) && simulated.contains(Properties.DOOR_HINGE)) {
                     if (required.get(Properties.DOOR_HINGE) != simulated.get(Properties.DOOR_HINGE)) return false;
-                }
-
                 // Block Face - wall mounted blocks like torches or levers
-                if (required.contains(Properties.BLOCK_FACE) && simulated.contains(Properties.BLOCK_FACE)) {
+                } else if (required.contains(Properties.BLOCK_FACE) && simulated.contains(Properties.BLOCK_FACE)) {
                     if (required.get(Properties.BLOCK_FACE) != simulated.get(Properties.BLOCK_FACE)) return false;
-                }
-
                 // Attachment - hanging signs
-                if (required.contains(Properties.ATTACHMENT) && simulated.contains(Properties.ATTACHMENT)) {
+                } else if (required.contains(Properties.ATTACHMENT) && simulated.contains(Properties.ATTACHMENT)) {
                     if (required.get(Properties.ATTACHMENT) != simulated.get(Properties.ATTACHMENT)) return false;
-                }
-
                 // Hanging - lanterns
-                if (required.contains(Properties.HANGING) && simulated.contains(Properties.HANGING)) {
+                } else if (required.contains(Properties.HANGING) && simulated.contains(Properties.HANGING)) {
                     if (required.get(Properties.HANGING) != simulated.get(Properties.HANGING)) return false;
-                }
-
                 // Bed Part - beds
-                if (required.contains(Properties.BED_PART) && simulated.contains(Properties.BED_PART)) {
+                } else if (required.contains(Properties.BED_PART) && simulated.contains(Properties.BED_PART)) {
                     if (required.get(Properties.BED_PART) != simulated.get(Properties.BED_PART)) return false;
                 }
+            }
+
+            if (incrementalStates.get()) {
+                // Incremental states - Snow layers, turtle eggs, candles, pickles
+                if (simulated.contains(Properties.LAYERS) && existing.contains(Properties.LAYERS)) {
+                    if (simulated.get(Properties.LAYERS) <= existing.get(Properties.LAYERS)) return false;
+                } else if (simulated.contains(Properties.EGGS) && existing.contains(Properties.EGGS)) {
+                    if (simulated.get(Properties.EGGS) <= existing.get(Properties.EGGS)) return false;
+                } else if (simulated.contains(Properties.CANDLES) && existing.contains(Properties.CANDLES)) {
+                    if (simulated.get(Properties.CANDLES) <= existing.get(Properties.CANDLES)) return false;
+                } else if (simulated.contains(Properties.PICKLES) && existing.contains(Properties.PICKLES)) {
+                    if (simulated.get(Properties.PICKLES) <= existing.get(Properties.PICKLES)) return false;
+                } 
             }
 
             return true;
