@@ -297,6 +297,7 @@ public class DinoPrinter extends Module {
     private int placeTimer;
     private int cacheTimer;
     private final Set<BlockPos> cachedPositions = new ObjectOpenHashSet<>();
+    private final Set<BlockPos> rotatePositions = new ObjectOpenHashSet<>();
     private final List<BlockPrint> blockPrints = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
     private long lastSignPlaceTime = 0;
@@ -310,19 +311,19 @@ public class DinoPrinter extends Module {
 
     @Override
     public void onActivate() {
-        placeTimer = 0;
-        cacheTimer = 0;
-        cachedPositions.clear();
-        blockPrints.clear();
-        placedFades.clear();
-        lastSignPlaceTime = 0;
+        reset();
     }
 
     @Override
     public void onDeactivate() {
+        reset();
+    }
+
+    private void reset() {
         placeTimer = 0;
         cacheTimer = 0;
         cachedPositions.clear();
+        rotatePositions.clear();
         blockPrints.clear();
         placedFades.clear();
         lastSignPlaceTime = 0;
@@ -355,6 +356,9 @@ public class DinoPrinter extends Module {
 
             // Spot cannot be required blockstate
             if (required.getBlock() == existing.getBlock()) return;
+
+            // Don't place in a position we are rotating towards already
+            if (rotatePositions.contains(blockPos)) return;
 
             // Blacklisted states
             if (!required.getFluidState().isEmpty() || required.isAir()) return;
@@ -475,7 +479,9 @@ public class DinoPrinter extends Module {
     // Custom placement that is far better than meteor's standard
     private void place(BlockPrint blockPrint, FindItemResult result) {
         if (rotate.get() || blockPrint.shouldRotatePlace()) {
+            rotatePositions.add(blockPrint.blockPos);
             Rotations.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
+                rotatePositions.clear();
                 interactPlace(blockPrint.hit, result);
             });
         } else {
