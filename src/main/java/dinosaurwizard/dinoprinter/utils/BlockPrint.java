@@ -36,12 +36,15 @@ import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.MultifaceGrowthBlock;
+import net.minecraft.block.VineBlock;
 import net.minecraft.block.enums.SlabType;
 import net.minecraft.block.ShapeContext;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.state.property.Properties;
+import net.minecraft.state.property.Property;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -261,7 +264,7 @@ public class BlockPrint {
         }
 
         if (printer.incrementalStates.get()) {
-            // Incremental states - Snow layers, turtle eggs, candles, pickles
+            // Incremental states - snow layers, turtle eggs, candles, pickles, wildflowers, leaflitter
             if (simulated.contains(Properties.LAYERS) && existing.contains(Properties.LAYERS)) {
                 if (simulated.get(Properties.LAYERS) <= existing.get(Properties.LAYERS)) return false;
             } else if (simulated.contains(Properties.EGGS) && existing.contains(Properties.EGGS)) {
@@ -270,10 +273,30 @@ public class BlockPrint {
                 if (simulated.get(Properties.CANDLES) <= existing.get(Properties.CANDLES)) return false;
             } else if (simulated.contains(Properties.PICKLES) && existing.contains(Properties.PICKLES)) {
                 if (simulated.get(Properties.PICKLES) <= existing.get(Properties.PICKLES)) return false;
-            } 
-        }
+            } else if (simulated.contains(Properties.FLOWER_AMOUNT) && existing.contains(Properties.FLOWER_AMOUNT)) {
+                if (simulated.get(Properties.FLOWER_AMOUNT) <= existing.get(Properties.FLOWER_AMOUNT)) return false;
+            } else if (simulated.contains(Properties.SEGMENT_AMOUNT) && existing.contains(Properties.SEGMENT_AMOUNT)) {
+                if (simulated.get(Properties.SEGMENT_AMOUNT) <= existing.get(Properties.SEGMENT_AMOUNT)) return false;
+            }
 
+            // Multi face blocks - vines, glow lichen, sculk veins
+            if (required.getBlock() instanceof MultifaceGrowthBlock || required.getBlock() instanceof VineBlock) {
+                if (isMatchingPropertyMultiFace(simulated, Properties.UP)) return true;
+                if (isMatchingPropertyMultiFace(simulated, Properties.DOWN)) return true;
+                if (isMatchingPropertyMultiFace(simulated, Properties.EAST)) return true;
+                if (isMatchingPropertyMultiFace(simulated, Properties.NORTH)) return true;
+                if (isMatchingPropertyMultiFace(simulated, Properties.SOUTH)) return true;
+                if (isMatchingPropertyMultiFace(simulated, Properties.WEST)) return true;
+                return false;
+            }
+        }
         return true;
+    }
+
+    private boolean isMatchingPropertyMultiFace(BlockState simulated, Property<Boolean> property) {
+        return simulated.contains(property) && required.contains(property) &&
+               simulated.get(property) && required.get(property) &&
+               (!existing.contains(property) || !existing.get(property));
     }
 
     // Check if the BlockHitResult has the correct rotation
@@ -346,6 +369,19 @@ public class BlockPrint {
             return required.get(Properties.CANDLES) > existing.get(Properties.CANDLES);
         } else if (required.contains(Properties.PICKLES) && existing.contains(Properties.PICKLES)) {
             return required.get(Properties.PICKLES) > existing.get(Properties.PICKLES);
+        } else if (required.contains(Properties.FLOWER_AMOUNT) && existing.contains(Properties.FLOWER_AMOUNT)) {
+            return required.get(Properties.FLOWER_AMOUNT) > existing.get(Properties.FLOWER_AMOUNT);
+        } else if (required.contains(Properties.SEGMENT_AMOUNT) && existing.contains(Properties.SEGMENT_AMOUNT)) {
+            return required.get(Properties.SEGMENT_AMOUNT) > existing.get(Properties.SEGMENT_AMOUNT);
+        }
+
+        if (required.getBlock() instanceof MultifaceGrowthBlock || required.getBlock() instanceof VineBlock) {
+            if (required.contains(Properties.UP) && required.get(Properties.UP) && !existing.get(Properties.UP)) return true;
+            if (required.contains(Properties.DOWN) && required.get(Properties.DOWN) && !existing.get(Properties.DOWN)) return true;
+            if (required.contains(Properties.EAST) && required.get(Properties.EAST) && !existing.get(Properties.EAST)) return true;
+            if (required.contains(Properties.NORTH) && required.get(Properties.NORTH) && !existing.get(Properties.NORTH)) return true;
+            if (required.contains(Properties.SOUTH) && required.get(Properties.SOUTH) && !existing.get(Properties.SOUTH)) return true;
+            if (required.contains(Properties.WEST) && required.get(Properties.WEST) && !existing.get(Properties.WEST)) return true;
         }
         return false;
     }

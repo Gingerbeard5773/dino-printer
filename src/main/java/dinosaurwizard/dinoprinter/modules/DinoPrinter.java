@@ -21,7 +21,6 @@ import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.KillAura;
 import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
 import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
-import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
@@ -159,7 +158,7 @@ public class DinoPrinter extends Module {
 
     public final Setting<Boolean> incrementalStates = sgAdvanced.add(new BoolSetting.Builder()
         .name("incremental-states")
-        .description("Respect states that need multiple placements. Necessary for double-slabs, candles, sea pickles, and snow layers.")
+        .description("Respect states that need multiple placements. Necessary for double-slabs, candles, vines, and snow layers.")
         .defaultValue(true)
         .build()
     );
@@ -537,13 +536,6 @@ public class DinoPrinter extends Module {
     private static double distanceToPlayer(BlockPos pos) {
         if (MeteorClient.mc.player == null) return 0;
 
-        return Utils.squaredDistance(
-            MeteorClient.mc.player.getX(),
-            MeteorClient.mc.player.getY(),
-            MeteorClient.mc.player.getZ(),
-            pos.getX() + 0.5,
-            pos.getY() + 0.5,
-            pos.getZ() + 0.5
-        );
+        return MeteorClient.mc.player.getEntityPos().squaredDistanceTo(pos.toCenterPos());
     }
 }
