@@ -10,6 +10,7 @@ import dinosaurwizard.dinoprinter.utils.BlockPrint;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.entity.player.SendMovementPacketsEvent;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -29,6 +30,7 @@ import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
+import meteordevelopment.orbit.EventPriority;
 import net.minecraft.block.AbstractSignBlock;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
@@ -298,6 +300,7 @@ public class DinoPrinter extends Module {
     private final List<BlockPrint> blockPrints = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
     private long lastSignPlaceTime = 0;
+    private Item pendingItem = null;
 
     public DinoPrinter() {
         super(Categories.World, "dino-printer", "Prints rendered litematica schematics.");
@@ -321,6 +324,7 @@ public class DinoPrinter extends Module {
         blockPrints.clear();
         placedFades.clear();
         lastSignPlaceTime = 0;
+        pendingItem = null;
     }
 
     @EventHandler
@@ -370,16 +374,11 @@ public class DinoPrinter extends Module {
             if (!result.found()) continue;
 
             // Move items into hotbar if allowed
-            if (!result.isHotbar() && autoSwitch.get() && allowInventory.get()) {
-                if (!stationaryMove.get() || mc.player.getVelocity().multiply(1, 0, 1).length() < 0.00001) {
-                    int slotToUse = getSwapSlotToUse();
-                    InvUtils.quickSwap().fromId(slotToUse).to(result.slot());
-
-                    // It takes time for the server to register a swap, so exit out now.
-                    blockPrints.clear();
-                    placeTimer = placeDelay.get() - inventoryMoveDelay.get();
-                    return;
-                }
+            if (!result.isHotbar() && canInventoryMove() && pendingItem == null) {
+                pendingItem = item;
+                blockPrints.clear();
+                placeTimer = placeDelay.get() - inventoryMoveDelay.get();
+                return;
             }
 
             if (!result.isHotbar()) continue;
@@ -404,6 +403,21 @@ public class DinoPrinter extends Module {
         placeTimer = 0;
     }
 
+    @EventHandler(priority = EventPriority.LOWEST)
+    private void onSendMovementPacketsPost(SendMovementPacketsEvent.Post event) {
+        // Move items into our hotbar AFTER rotations occur
+        if (pendingItem == null) return;
+
+        if (canInventoryMove()) {
+            FindItemResult result = InvUtils.find(itemStack -> pendingItem == itemStack.getItem());
+            if (result.found() && !result.isHotbar()) {
+                int slotToUse = getSwapSlotToUse();
+                InvUtils.quickSwap().fromId(slotToUse).to(result.slot());
+            }
+        }
+        pendingItem = null;
+    }
+
     @EventHandler
     private void onOpenScreen(OpenScreenEvent event) {
         // Cancel sign screens when applicable
@@ -411,6 +425,14 @@ public class DinoPrinter extends Module {
         if (System.currentTimeMillis() - lastSignPlaceTime > 500) return;
 
         event.setCancelled(true);
+    }
+
+    private boolean canInventoryMove() {
+        if (!autoSwitch.get() || !allowInventory.get()) return false;
+
+        if (stationaryMove.get() && mc.player.getVelocity().multiply(1, 0, 1).length() > 0.00001) return false;
+
+        return true;
     }
 
     private boolean shouldPause() {
