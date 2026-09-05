@@ -219,6 +219,14 @@ public class DinoPrinter extends Module {
         .build()
     );
 
+    private final Setting<Boolean> hotbarPriority = sgInventory.add(new BoolSetting.Builder()
+        .name("hotbar-priority")
+        .description("Blocks in your hotbar will have placement priority over blocks inside your inventory.")
+        .defaultValue(true)
+        .visible(() -> autoSwitch.get() && allowInventory.get())
+        .build()
+    );
+
     // Pause
 
     private final Setting<Boolean> pauseOnUse = sgPause.add(new BoolSetting.Builder()
@@ -350,12 +358,7 @@ public class DinoPrinter extends Module {
         if (blockPrints.isEmpty()) return;
 
         // Sort blocks
-        if (firstAlgorithm.get() != SortAlgorithm.None) {
-            if (firstAlgorithm.get().applySecondSorting && secondAlgorithm.get() != SortingSecond.None) {
-                blockPrints.sort(secondAlgorithm.get().algorithm);
-            }
-            blockPrints.sort(firstAlgorithm.get().algorithm);
-        }
+        sortBlockPrints();
 
         // Place blocks!
         int placedCount = 0;
@@ -503,6 +506,20 @@ public class DinoPrinter extends Module {
 
     /// Sorting
 
+    private void sortBlockPrints() {
+        Comparator<BlockPrint> comparator = firstAlgorithm.get().algorithm;
+
+        if (firstAlgorithm.get().applySecondSorting && secondAlgorithm.get() != SortingSecond.None) {
+            comparator = secondAlgorithm.get().algorithm.thenComparing(comparator);
+        }
+
+        if (autoSwitch.get() && allowInventory.get() && hotbarPriority.get()) {
+            comparator = hotbarAlgorithm.thenComparing(comparator);
+        }
+
+        blockPrints.sort(comparator);
+    }
+
     @SuppressWarnings("unused")
     public enum SortAlgorithm {
         None(false, (a, b) -> 0),
@@ -538,4 +555,14 @@ public class DinoPrinter extends Module {
 
         return MeteorClient.mc.player.getEntityPos().squaredDistanceTo(pos.toCenterPos());
     }
+
+    private static final Comparator<BlockPrint> hotbarAlgorithm = (a, b) -> {
+        Item itemA = a.required.getBlock().asItem();
+        Item itemB = b.required.getBlock().asItem();
+
+        boolean aInHotbar = InvUtils.findInHotbar(itemStack -> itemA == itemStack.getItem()).found();
+        boolean bInHotbar = InvUtils.findInHotbar(itemStack -> itemB == itemStack.getItem()).found();
+
+        return Boolean.compare(bInHotbar, aInHotbar);
+    };
 }
