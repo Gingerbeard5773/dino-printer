@@ -206,7 +206,7 @@ public class DinoPrinter extends Module {
 
     private final Setting<Integer> inventoryMoveDelay = sgInventory.add(new IntSetting.Builder()
         .name("inventory-move-delay")
-        .description("The tick delay that your printer will be paused when moving items into your hotbar.")
+        .description("The tick delay that your swap slot will be locked when moving items into your hotbar.")
         .defaultValue(4)
         .range(0, 10)
         .visible(() -> autoSwitch.get() && allowInventory.get())
@@ -295,12 +295,14 @@ public class DinoPrinter extends Module {
 
     private int placeTimer;
     private int cacheTimer;
+    private int inventoryTimer;
+    private Item pendingItem = null;
+    private int pendingSlot = -1;
     public final Set<BlockPos> cachedPositions = new ObjectOpenHashSet<>();
     public final Set<BlockPos> rotatePositions = new ObjectOpenHashSet<>();
     private final List<BlockPrint> blockPrints = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
     private long lastSignPlaceTime = 0;
-    private Item pendingItem = null;
 
     public DinoPrinter() {
         super(Categories.World, "dino-printer", "Prints rendered litematica schematics.");
@@ -319,12 +321,14 @@ public class DinoPrinter extends Module {
     private void reset() {
         placeTimer = 0;
         cacheTimer = 0;
+        inventoryTimer = 0;
+        pendingItem = null;
+        pendingSlot = -1;
         cachedPositions.clear();
         rotatePositions.clear();
         blockPrints.clear();
         placedFades.clear();
         lastSignPlaceTime = 0;
-        pendingItem = null;
     }
 
     @EventHandler
@@ -337,8 +341,14 @@ public class DinoPrinter extends Module {
 
         if (shouldPause()) return;
 
+        // Unlock the pending slot when the time comes
+        if (pendingSlot != -1 && pendingItem == null && inventoryTimer++ >= inventoryMoveDelay.get()) {
+            pendingSlot = -1;
+            inventoryTimer = 0;
+        }
+
         // Clear cached positions every so often
-        if (!cachedPositions.isEmpty() && cacheTimer++ > placeRetryDelay.get()) {
+        if (!cachedPositions.isEmpty() && cacheTimer++ >= placeRetryDelay.get()) {
             cachedPositions.clear();
             cacheTimer = 0;
         }
@@ -370,14 +380,14 @@ public class DinoPrinter extends Module {
             if (placedCount >= blocksPerTick.get()) break;
 
             Item item = blockPrint.required.getBlock().asItem();
-            FindItemResult result = InvUtils.find(itemStack -> item == itemStack.getItem());
+            FindItemResult result = findPrintableItem(item);
             if (!result.found()) continue;
 
             // Move items into hotbar if allowed
-            if (!result.isHotbar() && canInventoryMove() && pendingItem == null) {
+            if (!result.isHotbar() && canInventoryMove()) {
                 pendingItem = item;
+                pendingSlot = getSwapSlotToUse();
                 blockPrints.clear();
-                placeTimer = placeDelay.get() - inventoryMoveDelay.get();
                 return;
             }
 
@@ -411,8 +421,7 @@ public class DinoPrinter extends Module {
         if (canInventoryMove()) {
             FindItemResult result = InvUtils.find(itemStack -> pendingItem == itemStack.getItem());
             if (result.found() && !result.isHotbar()) {
-                int slotToUse = getSwapSlotToUse();
-                InvUtils.quickSwap().fromId(slotToUse).to(result.slot());
+                InvUtils.quickSwap().fromId(pendingSlot).to(result.slot());
             }
         }
         pendingItem = null;
@@ -449,6 +458,23 @@ public class DinoPrinter extends Module {
         if (pauseOnLag.get() && TickRate.INSTANCE.getTimeSinceLastTick() >= 1.5f) return true;
 
         return false;
+    }
+
+    // Find the slot of an item we can print with
+    private FindItemResult findPrintableItem(Item item) {
+        // Dont allow inventory if we are pending
+        int end = pendingSlot != -1 ? 8 : mc.player.getInventory().size();
+        for (int i = 0; i <= end; i++) {
+            // Slots we are moving items into are locked
+            if (i == pendingSlot) continue; 
+
+            ItemStack stack = mc.player.getInventory().getStack(i);
+            if (item != stack.getItem()) continue;
+
+            return new FindItemResult(i, 0);
+        }
+
+        return new FindItemResult(-1, 0);
     }
 
     // Find a good slot to swap items into
