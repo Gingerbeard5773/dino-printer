@@ -10,34 +10,23 @@
 
 <hr />
 
-## Overview
+# Overview
 
 **Dino Printer** is an all-purpose 'just works' schematic printer designed for servers with strict anti-cheat systems (or not!).
 
-It is built from scratch and is **not a fork of any existing Meteor printer**. Because of this, Dino Printer has its own placement system rather than relying on the same methods used by other printers.
+It is built from scratch and is **not a fork of any other Meteor printer**.
 
 The overarching goal of Dino Printer is to provide reliable schematic printing while still supporting advanced features that are difficult to implement on stricter servers.
 
-## How It Works
+# How It Works
 
 Dino Printer uses a dynamic system to determine **how each block should be placed**.
 
-When the printer needs to place a block, it first looks at the blocks surrounding the target position. It examines the shape of each adjacent block and generates possible points on their surfaces where the new block could be placed.
-
-For every possible placement point, Dino Printer performs a series of checks, such as:
-
-* Can the point be seen by the player? (If using raytracing)
-* What direction will the block face if placed here?
-* If stairs or slabs, will the block be placed in the correct half?
-* Will the resulting block state match the schematic?
-
-Instead of simply assuming how a block should be placed, Dino Printer **simulates the placement at each possible point** and examines the resulting `BlockState`.
-
-This allows it to determine the correct placement position and rotation without needing to configure special cases for individual blocks.
+Instead of simply assuming how a block should be placed, Dino Printer **simulates the placement at each possible point** and examines the `BlockState` to see if it matches the schematic.
 
 This makes the system highly flexible and allows it to work with **nearly all Minecraft blocks**.
 
-## Features
+# Features
 
 * **Advanced BlockState Matching** — Simulates placement to ensure every block matches the schematic's required state.
 * **Superior Raytracing** — Searches for multiple points across block surfaces instead of relying on a single point. This allows for reliable placement on servers that require raytracing.
@@ -54,3 +43,40 @@ Use the fork of Litematica maintained by [sakura-ryoko](https://github.com/sakur
 
 - [Litematica](https://github.com/sakura-ryoko/litematica)
 - [Malilib](https://github.com/sakura-ryoko/malilib)
+
+# Configuration
+
+Dino Printer offers a large amount of settings that may require configuring for each server.
+Here is an in-depth explanation of each relevant setting and how you should use them.
+
+| Setting | Description | Notes |
+| :--- | :--- | :--- |
+| **Place Delay** | The tick delay between placing blocks. | Lower values place faster. |
+| **Place Retry Delay** | Delay in ticks before retrying a failed placement. | Keep this setting somewhat high, as you don't want to waste time on failed place positions. |
+| **Place Range** | Maximum distance from the player at which blocks can be placed. | Server dependent. |
+| **Blocks Per Tick** | Maximum number of blocks placed per tick. | Most servers do not allow more than 1 block per tick. |
+| **Wall Place** | Allows placement through walls. | Disable this if your server requires ray-tracing. |
+| **Air Place** | Allows blocks to be placed without using another block-face. | This is a hack so some servers may disallow/limit it. |
+| **Sneak Place** | Sends sneaking packets when placing blocks. | Use this if you are placing against interactable blocks like furnaces or chests. |
+| **Rotate** | Rotates toward blocks before placing them. | Required for servers that dislike it when you don't rotate towards your placements. |
+| **Rotation Place** | Respects block rotation when placing. | This hack lets you rotate blocks from any direction. **NOTE: IT DOESNT WORK FULLY IN SINGLEPLAYER** |
+| **Strict Rotation** | Only allows rotation placements that could be performed legitimately. | Use this if your server doesn't allow the Rotation-Place hack. |
+| **Half Blocks** | Respects block half properties. | Required to properly place slabs, stairs, and trapdoors. |
+| **Incremental States** | Respects states that require multiple placements. | Required to properly place double-slabs, candles, sea pickles, vines, snow layers etc. |
+| **Misc States** | Respects miscellaneous block states. | Required to properly place doors, beds, lanterns, and other unique blocks. |
+| **Exit Signs** | Automatically exits sign-edit screens. | This cancels the sign-edit screen when placing signs. Note: This breaks the auto-sign-text feature from litematica. |
+| **Auto Switch** | Automatically switches to placeable blocks in the hotbar. | Disable if you need precision with which blocks you want to place. |
+| **Swap Back** | Returns to the previous hotbar slot after placing. | Some servers dislike it when the player swaps between slots multiple times in a tick. Disable if necessary. |
+| **Allow Inventory** | Allows blocks to be moved from inside the inventory into the hotbar. | — |
+| **Inventory Move Delay** | Number of ticks to lock the swap slot after moving an item into your hotbar. | This is for stopping misplacements. Set this to however long it takes for your server to register a swap fully. |
+| **Stationary Move** | Only allows inventory moves while standing still. | Only enable this if your server doesn't allow inventory movements while your player is moving. |
+| **Hotbar Priority** | Gives hotbar blocks priority over blocks in the inventory when placing. | Enabling this may result in less inventory movements. |
+
+# Frequently Asked Questions
+
+| Question | Answer |
+| :--- | :--- |
+| **What is Dino Printer capable of placing?** | Stairs, slabs, rotatable blocks such as observers, hoppers, and pistons, as well as double slabs, snow layers, signs, banners, vines, and more. **Essentially everything**, with a few exceptions. |
+| **Can I use Dino Printer to bypass cheat detection?** | **No.** Dino Printer is designed for servers such as 2b2t and Constantiam. It does **not** bypass cheat detection systems such as Watchdog. Dino Printer simply tries to comply with servers that have strict placement requirements. **I do not recommend using Dino Printer on servers where using cheats can result in a ban.** |
+| **Can I use Dino Printer to build map art?** | **Absolutely.** Due to Dino Printer's unique placement, "Mapart Mode" is **Built-in** by default. It is excellent for placing carpets on oceans, or building staircased maps. |
+| **Does Dino Printer offer any automation?** | **No.** Dino Printer is a general purpose printer. At minimum, Dino Printer can be paired with [baritone](https://github.com/cabaletta/baritone)'s own schematic builder to offer some level of automation. |
