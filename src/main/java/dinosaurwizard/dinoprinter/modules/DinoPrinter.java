@@ -167,7 +167,7 @@ public class DinoPrinter extends Module {
 
     public final Setting<Boolean> miscStates = sgAdvanced.add(new BoolSetting.Builder()
         .name("misc-states")
-        .description("Respect miscellaneous states. Blocks like doors, beds, and lanterns are affected. ")
+        .description("Respect miscellaneous states. Blocks like doors, beds, and lanterns are affected.")
         .defaultValue(true)
         .build()
     );
