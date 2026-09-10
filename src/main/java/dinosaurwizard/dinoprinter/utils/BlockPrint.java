@@ -36,6 +36,7 @@ import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.FluidBlock;
 import net.minecraft.block.MultifaceGrowthBlock;
 import net.minecraft.block.VineBlock;
 import net.minecraft.block.enums.SlabType;
@@ -90,7 +91,7 @@ public class BlockPrint {
 
     private boolean isValid() {
         // Blacklisted states
-        if (required.isAir() || !required.getFluidState().isEmpty()) return false;
+        if (required.isAir() || required.getBlock() instanceof FluidBlock) return false;
 
         if (!isIncremental()) {
             // Spot must be air or some other replaceable block
