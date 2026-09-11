@@ -331,10 +331,8 @@ public class BlockPrint {
     private boolean isValidRotationHit(BlockHitResult blockHit) {
         if (!printer.rotationPlace.get()) return true;
 
-        // Strict rotation calculation
         float legitYaw = (float) Rotations.getYaw(blockHit.getPos());
         float legitPitch = (float) Rotations.getPitch(blockHit.getPos());
-        if (isMatchingFacingFromHit(legitYaw, legitPitch, blockHit)) return true;
 
         // Hack rotation calculation
         if (!printer.strictRotation.get()) {
@@ -351,6 +349,10 @@ public class BlockPrint {
                 }
             }
         }
+
+        // Strict rotation calculation
+        if (isMatchingFacingFromHit(legitYaw, legitPitch, blockHit)) return true;
+
         return false;
     }
 
