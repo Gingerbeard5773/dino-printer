@@ -13,7 +13,6 @@ import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.SendMovementPacketsEvent;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
-import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
@@ -331,8 +330,9 @@ public class DinoPrinter extends Module {
         lastSignPlaceTime = 0;
     }
 
-    @EventHandler
-    private void onTickPre(TickEvent.Pre event) {
+    // onSendMovementPacketsPre is used instead of onTick for max synchronization with player rotations
+    @EventHandler(priority = EventPriority.HIGH)
+    private void onSendMovementPacketsPre(SendMovementPacketsEvent.Pre event) {
         WorldSchematic worldSchematic = SchematicWorldHandler.getSchematicWorld();
         if (worldSchematic == null) {
             toggle();
@@ -365,10 +365,7 @@ public class DinoPrinter extends Module {
 
             blockPrints.add(blockPrint);
         });
-    }
 
-    @EventHandler
-    private void onTickPost(TickEvent.Post event) {
         if (blockPrints.isEmpty()) return;
 
         // Sort blocks
@@ -401,10 +398,6 @@ public class DinoPrinter extends Module {
 
             place(blockPrint, result);
 
-            if (render.get()) {
-                placedFades.add(new PlacedFade((float) fadeTime.get(), blockPrint.blockPos));
-            }
-
             cachedPositions.add(blockPrint.blockPos);
             placedCount++;
         }
@@ -413,7 +406,8 @@ public class DinoPrinter extends Module {
         placeTimer = 0;
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    // Post rotations
+    @EventHandler(priority = EventPriority.LOW)
     private void onSendMovementPacketsPost(SendMovementPacketsEvent.Post event) {
         // Move items into our hotbar AFTER rotations occur
         if (pendingItem == null) return;
@@ -491,14 +485,21 @@ public class DinoPrinter extends Module {
             rotatePositions.add(blockPrint.blockPos);
             Rotations.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
                 rotatePositions.clear();
-                interactPlace(blockPrint.hit, result);
+                // Check requirements again due to new player position-
+                // Rotations have latentcy so we have to compensate correctly
+                BlockHitResult hit = blockPrint.hit;
+                if (!blockPrint.isPointValid(hit.getPos(), hit.getBlockPos(), hit.getSide())) return;
+
+                if (!blockPrint.isMatchingRequirements(hit)) return;
+
+                interactPlace(blockPrint, result);
             });
         } else {
-            interactPlace(blockPrint.hit, result);
+            interactPlace(blockPrint, result);
         }
     }
 
-    private void interactPlace(BlockHitResult hit, FindItemResult result) {
+    private void interactPlace(BlockPrint blockPrint, FindItemResult result) {
         // Send our inputs with sneaking injected
         boolean isSneaking = mc.player.isSneaking();
         PlayerInput old = mc.player.input.playerInput;
@@ -510,7 +511,7 @@ public class DinoPrinter extends Module {
 
         InvUtils.swap(result.slot(), swapBack.get());
 
-        if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, hit).isAccepted()) {
+        if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockPrint.hit).isAccepted()) {
             if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
             else mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
         }
@@ -521,6 +522,10 @@ public class DinoPrinter extends Module {
         if (sneakPlace.get() && !isSneaking) {
             mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(old));
             mc.player.setSneaking(isSneaking);
+        }
+
+        if (render.get()) {
+            placedFades.add(new PlacedFade((float) fadeTime.get(), blockPrint.blockPos));
         }
     }
 
