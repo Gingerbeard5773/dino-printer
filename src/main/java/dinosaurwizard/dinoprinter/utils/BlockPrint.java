@@ -33,7 +33,6 @@ import dinosaurwizard.dinoprinter.modules.DinoPrinter;
 import dinosaurwizard.dinoprinter.utils.PrinterPlaceContext;
 import fi.dy.masa.litematica.data.DataManager;
 import meteordevelopment.meteorclient.utils.player.Rotations;
-import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.FluidBlock;
@@ -391,7 +390,8 @@ public class BlockPrint {
 
     public boolean isPointValid(Vec3d point, BlockPos adjacent, Direction direction) {
         // Place point must be within range
-        if (!PlayerUtils.isWithin(point, printer.placeRange.get())) return false;
+        double range = printer.placeRange.get();
+        if (mc.player.getEyePos().squaredDistanceTo(point) > range * range) return false;
 
         // Must be visible if applicable
         if (!printer.wallPlace.get() && !isPointVisible(point, adjacent, direction)) return false;
