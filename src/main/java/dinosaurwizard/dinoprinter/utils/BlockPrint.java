@@ -173,19 +173,16 @@ public class BlockPrint {
     private BlockHitResult calculateBestPlaceHit() {
         for (Direction direction : Direction.values()) {
             BlockPos adjacent = blockPos.offset(direction);
-            BlockState adjacentState = mc.world.getBlockState(adjacent);
+            Direction opposite = direction.getOpposite();
 
             // Check spots on other blocks to place onto
-            if (!adjacentState.isReplaceable()) {
-                Set<Vec3d> points = getShapeFacePoints(adjacent, direction.getOpposite());
+            if (!mc.world.getBlockState(adjacent).isReplaceable()) {
+                Set<Vec3d> points = getShapeFacePoints(adjacent, opposite);
                 for (Vec3d point : points) {
-                    if (!isPointValid(point, blockPos, direction)) continue;
+                    if (!isPointValid(point, adjacent, opposite)) continue;
 
-                    BlockHitResult placeHit = new BlockHitResult(point, direction.getOpposite(), adjacent, false);
-
-                    if (!isMatchingPropertiesFromHit(placeHit)) continue;
-
-                    if (!isValidRotationHit(placeHit)) continue;
+                    BlockHitResult placeHit = new BlockHitResult(point, opposite, adjacent, false);
+                    if (!isMatchingRequirements(placeHit)) continue;
 
                     // placeHit passed all requirements
                     return placeHit;
@@ -201,11 +198,8 @@ public class BlockPrint {
                 for (Vec3d point : points) {
                     if (!isPointValid(point, blockPos, direction)) continue;
 
-                    BlockHitResult placeHit = new BlockHitResult(point, direction.getOpposite(), blockPos, false);
-
-                    if (!isMatchingPropertiesFromHit(placeHit)) continue;
-
-                    if (!isValidRotationHit(placeHit)) continue;
+                    BlockHitResult placeHit = new BlockHitResult(point, direction, blockPos, false);
+                    if (!isMatchingRequirements(placeHit)) continue;
 
                     // placeHit passed all requirements
                     return placeHit;
@@ -215,6 +209,12 @@ public class BlockPrint {
 
         // We failed to find any good spot to place the block
         return null;
+    }
+
+    public boolean isMatchingRequirements(BlockHitResult placeHit) {
+        if (!isMatchingPropertiesFromHit(placeHit)) return false;
+        if (!isValidRotationHit(placeHit)) return false;
+        return true;
     }
 
     // Check if the BlockHitResult has the same properties
@@ -389,7 +389,7 @@ public class BlockPrint {
         return false;
     }
 
-    private boolean isPointValid(Vec3d point, BlockPos adjacent, Direction direction) {
+    public boolean isPointValid(Vec3d point, BlockPos adjacent, Direction direction) {
         // Place point must be within range
         if (!PlayerUtils.isWithin(point, printer.placeRange.get())) return false;
 
