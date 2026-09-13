@@ -163,6 +163,8 @@ public class BlockPrint {
 
         boolean sneaking = printer.sneakPlace.get() || mc.player.isSneaking();
         ItemPlacementContext context = new PrinterPlaceContext(mc.player, yaw, pitch, sneaking, Hand.MAIN_HAND, stack, blockHit);
+        if (!existing.canReplace(context)) return null;
+
         return blockItem.getPlacementState(context);
     }
 
