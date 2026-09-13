@@ -24,7 +24,6 @@ import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
-import meteordevelopment.meteorclient.utils.world.BlockIterator;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
@@ -298,7 +297,6 @@ public class DinoPrinter extends Module {
     private Item pendingItem = null;
     private int pendingSlot = -1;
     public final Set<BlockPos> cachedPositions = new ObjectOpenHashSet<>();
-    public final Set<BlockPos> rotatePositions = new ObjectOpenHashSet<>();
     private final List<BlockPrint> blockPrints = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
     private long lastSignPlaceTime = 0;
@@ -324,7 +322,6 @@ public class DinoPrinter extends Module {
         pendingItem = null;
         pendingSlot = -1;
         cachedPositions.clear();
-        rotatePositions.clear();
         blockPrints.clear();
         placedFades.clear();
         lastSignPlaceTime = 0;
@@ -357,14 +354,29 @@ public class DinoPrinter extends Module {
         if (placeTimer++ < placeDelay.get()) return;
 
         // Find print locations
-        BlockIterator.register((int) Math.ceil(placeRange.get()), (int) Math.ceil(placeRange.get()), (blockPos, existing) -> {
-            BlockState required = worldSchematic.getBlockState(blockPos);
+        int px = mc.player.getBlockX(), py = mc.player.getBlockY(), pz = mc.player.getBlockZ();
+        int radius = (int) Math.ceil(placeRange.get());
+        int minY = Math.max(mc.world.getBottomY(), py - radius);
+        int maxY = Math.min(mc.world.getTopYInclusive(), py + radius);
 
-            BlockPrint blockPrint = new BlockPrint(blockPos, required, existing, this);
-            if (!blockPrint.canPlace()) return;
+        BlockPos.Mutable blockPos = new BlockPos.Mutable();
+        for (int x = px - radius; x <= px + radius; x++) {
+            for (int z = pz - radius; z <= pz + radius; z++) {
+                for (int y = minY; y <= maxY; y++) {
+                    int dx = x - px, dy = y - py, dz = z - pz;
+                    if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
 
-            blockPrints.add(blockPrint);
-        });
+                    blockPos.set(x, y, z);
+                    BlockState required = worldSchematic.getBlockState(blockPos);
+                    BlockState existing = mc.world.getBlockState(blockPos);
+
+                    BlockPrint blockPrint = new BlockPrint(blockPos, required, existing, this);
+                    if (!blockPrint.canPlace()) continue;
+
+                    blockPrints.add(blockPrint);
+                }
+            }
+        }
 
         if (blockPrints.isEmpty()) return;
 
@@ -482,16 +494,7 @@ public class DinoPrinter extends Module {
     // Custom placement that is far better than meteor's standard
     private void place(BlockPrint blockPrint, FindItemResult result) {
         if (rotate.get() || blockPrint.shouldRotatePlace()) {
-            rotatePositions.add(blockPrint.blockPos);
             Rotations.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
-                rotatePositions.clear();
-                // Check requirements again due to new player position-
-                // Rotations have latentcy so we have to compensate correctly
-                BlockHitResult hit = blockPrint.hit;
-                if (!blockPrint.isPointValid(hit.getPos(), hit.getBlockPos(), hit.getSide())) return;
-
-                if (!blockPrint.isMatchingRequirements(hit)) return;
-
                 interactPlace(blockPrint, result);
             });
         } else {

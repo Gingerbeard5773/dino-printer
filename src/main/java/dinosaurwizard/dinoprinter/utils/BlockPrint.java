@@ -103,9 +103,6 @@ public class BlockPrint {
             if (printer.cachedPositions.contains(blockPos)) return false;
         }
 
-        // Don't place in a position we are rotating towards already
-        if (printer.rotatePositions.contains(blockPos)) return false;
-
         // Only rendered schematic blocks can be placed
         if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) return false;
 
@@ -183,7 +180,6 @@ public class BlockPrint {
                     BlockHitResult placeHit = new BlockHitResult(point, opposite, adjacent, false);
                     if (!isMatchingRequirements(placeHit)) continue;
 
-                    // placeHit passed all requirements
                     return placeHit;
                 }
             }
@@ -200,7 +196,6 @@ public class BlockPrint {
                     BlockHitResult placeHit = new BlockHitResult(point, direction, blockPos, false);
                     if (!isMatchingRequirements(placeHit)) continue;
 
-                    // placeHit passed all requirements
                     return placeHit;
                 }
             }
@@ -210,7 +205,7 @@ public class BlockPrint {
         return null;
     }
 
-    public boolean isMatchingRequirements(BlockHitResult placeHit) {
+    private boolean isMatchingRequirements(BlockHitResult placeHit) {
         if (!isMatchingPropertiesFromHit(placeHit)) return false;
         if (!isValidRotationHit(placeHit)) return false;
         return true;
@@ -388,7 +383,7 @@ public class BlockPrint {
         return false;
     }
 
-    public boolean isPointValid(Vec3d point, BlockPos adjacent, Direction direction) {
+    private boolean isPointValid(Vec3d point, BlockPos adjacent, Direction direction) {
         // Place point must be within range
         double range = printer.placeRange.get();
         if (mc.player.getEyePos().squaredDistanceTo(point) > range * range) return false;
