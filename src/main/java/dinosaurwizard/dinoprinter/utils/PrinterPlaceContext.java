@@ -22,11 +22,13 @@ public class PrinterPlaceContext extends ItemPlacementContext {
 
     private final float yaw;
     private final float pitch;
+    private final boolean sneaking;
 
-    public PrinterPlaceContext(PlayerEntity player, float yaw, float pitch, Hand hand, ItemStack stack, BlockHitResult hitResult) {
+    public PrinterPlaceContext(PlayerEntity player, float yaw, float pitch, boolean sneaking, Hand hand, ItemStack stack, BlockHitResult hitResult) {
         super(player.getEntityWorld(), player, hand, stack, hitResult);
         this.yaw = yaw;
         this.pitch = pitch;
+        this.sneaking = sneaking;
     }
 
     @Override
@@ -64,6 +66,11 @@ public class PrinterPlaceContext extends ItemPlacementContext {
     @Override
     public Direction getHorizontalPlayerFacing() {
         return Direction.fromHorizontalDegrees(yaw);
+    }
+
+    @Override
+    public boolean shouldCancelInteraction() {
+        return sneaking;
     }
 
     @Override

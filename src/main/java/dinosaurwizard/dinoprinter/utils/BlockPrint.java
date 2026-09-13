@@ -33,11 +33,12 @@ import dinosaurwizard.dinoprinter.modules.DinoPrinter;
 import dinosaurwizard.dinoprinter.utils.PrinterPlaceContext;
 import fi.dy.masa.litematica.data.DataManager;
 import meteordevelopment.meteorclient.utils.player.Rotations;
-import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.ChestBlock;
 import net.minecraft.block.FluidBlock;
 import net.minecraft.block.MultifaceGrowthBlock;
 import net.minecraft.block.VineBlock;
+import net.minecraft.block.enums.ChestType;
 import net.minecraft.block.enums.SlabType;
 import net.minecraft.block.ShapeContext;
 import net.minecraft.item.BlockItem;
@@ -157,11 +158,11 @@ public class BlockPrint {
     // The simulated place state is effectively the blockState when it is actually placed, allowing us to determine what it will look like before it is placed.
     // This can be used to compare certain attributes such as the facing direction.
     private BlockState getSimulatedPlaceState(float yaw, float pitch, BlockHitResult blockHit) {
-        Block block = required.getBlock();
-        ItemStack stack = block.asItem().getDefaultStack();
+        ItemStack stack = required.getBlock().asItem().getDefaultStack();
         if (!(stack.getItem() instanceof BlockItem blockItem)) return null;
 
-        ItemPlacementContext context = new PrinterPlaceContext(mc.player, yaw, pitch, Hand.MAIN_HAND, stack, blockHit);
+        boolean sneaking = printer.sneakPlace.get() || mc.player.isSneaking();
+        ItemPlacementContext context = new PrinterPlaceContext(mc.player, yaw, pitch, sneaking, Hand.MAIN_HAND, stack, blockHit);
         return blockItem.getPlacementState(context);
     }
 
@@ -255,6 +256,17 @@ public class BlockPrint {
             // Bed Part - beds
             } else if (required.contains(Properties.BED_PART) && simulated.contains(Properties.BED_PART)) {
                 if (required.get(Properties.BED_PART) != simulated.get(Properties.BED_PART)) return false;
+            // Chest Type - chests 
+            } else if (required.contains(Properties.CHEST_TYPE) && simulated.contains(Properties.CHEST_TYPE)) {
+                ChestType requiredType = required.get(Properties.CHEST_TYPE);
+                ChestType simulatedType = simulated.get(Properties.CHEST_TYPE);
+                if (requiredType != ChestType.SINGLE) {
+                    BlockPos neighborPos = blockPos.offset(ChestBlock.getFacing(required));
+                    BlockState neighborState = mc.world.getBlockState(neighborPos);
+                    if (neighborState.contains(Properties.CHEST_TYPE) && requiredType != simulatedType) return false;
+                } else {
+                    if (requiredType != simulatedType) return false;
+                }
             }
         }
 
