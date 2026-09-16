@@ -73,6 +73,28 @@ Here is an in-depth explanation of each relevant setting and how you should use 
 | **Slot Lock Ticks** | Number of ticks to lock the swap slot after moving an item into your hotbar. | Only necessary to configure if Anti-Override-Ticks doesn't stop misplacements on your server. |
 | **Anti Override Ticks** | Number of ticks to stop server sync packets from overriding your slots. | This is for stopping misplacements. Inventory related S2C packets mess with the printer, so cancel them. |
 
+### Config Presets
+
+* Here are some configs for certain servers. They cannot be guaranteed to be up to date, and adjustments may be necessary.
+
+<details>
+<summary>Constantiam (Grim)</summary>
+
+```text
+H4sIAAAAAAAA/32OawrCMBCEJz6bKniSHKOIx1ibpQTjJiRptbdXC1VQ8N/APL6pgQoroStjb50EE5OTwqlGlbkUJ13W2HQp9DHXABYKh8xtcUGaeySxbNU8sD2ycCKvP92pssR6IN/zU79hu+ipZWPZ0wg1B2ZXk0tmSgB/gPokA0sJafxCqt/FfKNoztReXi8eOQ5enPYAAAA=
+```
+
+</details>
+
+<details>
+<summary>Oldfrog (NCP)</summary>
+
+```text
+H4sIAAAAAAAA/32Q3QrCMAyFM+fPNgWfpA/hhYiPEdsgZTUtbba5t9cJ22SCd4Gc852cVAAFrBkfBAdj2asQLQvFCopEIpbvqYTtPfompAoA8gyOibRYz+dnQDZkshGwuxBTRFfO3sGyymHTomvoPU9h++BQkzLksIdsFIzbqkPn1EcC8CexOJkWWZNZRGYjcVIek0SrRUUvOKD+Yssrt8TiY7+s8nNpmToM6oa6hq+amznWeVHO61qJ1XUaXvACbU7e3HMBAAA=
+```
+
+</details>
+
 # Frequently Asked Questions
 
 | Question | Answer |
