@@ -68,9 +68,10 @@ Here is an in-depth explanation of each relevant setting and how you should use 
 | **Auto Switch** | Automatically switches to placeable blocks in the hotbar. | Disable if you need precision with which blocks you want to place. |
 | **Swap Back** | Returns to the previous hotbar slot after placing. | Some servers dislike it when the player swaps between slots multiple times in a tick. Disable if necessary. |
 | **Allow Inventory** | Allows blocks to be moved from inside the inventory into the hotbar. | — |
-| **Inventory Move Delay** | Number of ticks to lock the swap slot after moving an item into your hotbar. | This is for stopping misplacements. Set this to however long it takes for your server to register a swap fully. |
 | **Stationary Move** | Only allows inventory moves while standing still. | Only enable this if your server doesn't allow inventory movements while your player is moving. |
 | **Hotbar Priority** | Gives hotbar blocks priority over blocks in the inventory when placing. | Enabling this may result in less inventory movements. |
+| **Slot Lock Ticks** | Number of ticks to lock the swap slot after moving an item into your hotbar. | Only necessary to configure if Anti-Override-Ticks doesn't stop misplacements on your server. |
+| **Anti Override Ticks** | Number of ticks to stop server sync packets from overriding your slots. | This is for stopping misplacements. Inventory related S2C packets mess with the printer, so cancel them. |
 
 # Frequently Asked Questions
 

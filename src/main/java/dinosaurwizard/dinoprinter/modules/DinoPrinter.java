@@ -12,6 +12,7 @@ import fi.dy.masa.litematica.world.WorldSchematic;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.SendMovementPacketsEvent;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
+import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
@@ -21,9 +22,9 @@ import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.KillAura;
 import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
 import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
-import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
+import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
@@ -36,9 +37,12 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
+import net.minecraft.network.packet.s2c.play.InventoryS2CPacket;
+import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.screen.slot.Slot;
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.PlayerInput;
 
@@ -86,6 +90,7 @@ public class DinoPrinter extends Module {
         .description("How many blocks to place in one tick.")
         .defaultValue(1)
         .min(1)
+        .sliderMax(20)
         .build()
     );
 
@@ -202,15 +207,6 @@ public class DinoPrinter extends Module {
         .build()
     );
 
-    private final Setting<Integer> inventoryMoveDelay = sgInventory.add(new IntSetting.Builder()
-        .name("inventory-move-delay")
-        .description("The tick delay that your swap slot will be locked when moving items into your hotbar.")
-        .defaultValue(4)
-        .range(0, 10)
-        .visible(() -> autoSwitch.get() && allowInventory.get())
-        .build()
-    );
-
     private final Setting<Boolean> stationaryMove = sgInventory.add(new BoolSetting.Builder()
         .name("stationary-move")
         .description("Only allows blocks to be moved from your inventory if you are standing still. Required for certain anti-cheats.")
@@ -224,6 +220,25 @@ public class DinoPrinter extends Module {
         .description("Blocks in your hotbar will have placement priority over blocks inside your inventory.")
         .defaultValue(true)
         .visible(() -> autoSwitch.get() && allowInventory.get())
+        .build()
+    );
+
+    private final Setting<Integer> slotLockTicks = sgInventory.add(new IntSetting.Builder()
+        .name("slot-lock-ticks")
+        .description("The time in ticks to lock a slot that was used for swapping items.")
+        .defaultValue(0)
+        .min(0)
+        .sliderMax(20)
+        .visible(() -> autoSwitch.get() && allowInventory.get())
+        .build()
+    );
+
+    private final Setting<Integer> antiOverrideTicks = sgInventory.add(new IntSetting.Builder()
+        .name("anti-override-ticks")
+        .description("The time in ticks to stop S2C sync packets overriding your inventory slots, for the purpose of stopping misplaces.")
+        .defaultValue(8)
+        .min(0)
+        .sliderMax(20)
         .build()
     );
 
@@ -291,15 +306,24 @@ public class DinoPrinter extends Module {
         .build()
     );
 
-    private int placeTimer;
-    private int cacheTimer;
-    private int inventoryTimer;
-    private Item pendingItem = null;
-    private int pendingSlot = -1;
+    private int placeTimer = 0;
+    private int cacheTimer = 0;
+    private int pendingInventorySlot = -1;
+    private int pendingHotbarSlot = -1;
+    private long lastSignPlaceTime = 0;
     public final Set<BlockPos> cachedPositions = new ObjectOpenHashSet<>();
     private final List<BlockPrint> blockPrints = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
-    private long lastSignPlaceTime = 0;
+    private final List<ItemStack> mainInventory = new ArrayList<>(SlotUtils.MAIN_END + 1);
+    private final List<PrintSlot> printSlots = createPrintSlots();
+
+    private List<PrintSlot> createPrintSlots() {
+        List<PrintSlot> slots = new ArrayList<>(SlotUtils.MAIN_END + 1);
+        for (int i = 0; i <= SlotUtils.MAIN_END; i++) {
+            slots.add(new PrintSlot(i));
+        }
+        return slots;
+    }
 
     public DinoPrinter() {
         super(Categories.World, "dino-printer", "Prints rendered litematica schematics.");
@@ -318,13 +342,17 @@ public class DinoPrinter extends Module {
     private void reset() {
         placeTimer = 0;
         cacheTimer = 0;
-        inventoryTimer = 0;
-        pendingItem = null;
-        pendingSlot = -1;
+        pendingInventorySlot = -1;
+        pendingHotbarSlot = -1;
+        lastSignPlaceTime = 0;
         cachedPositions.clear();
         blockPrints.clear();
         placedFades.clear();
-        lastSignPlaceTime = 0;
+        mainInventory.clear();
+
+        for (PrintSlot slot : printSlots) {
+            slot.expire();
+        }
     }
 
     // onSendMovementPacketsPre is used instead of onTick for max synchronization with player rotations
@@ -336,13 +364,13 @@ public class DinoPrinter extends Module {
             return;
         }
 
-        if (shouldPause()) return;
-
-        // Unlock the pending slot when the time comes
-        if (pendingSlot != -1 && pendingItem == null && inventoryTimer++ >= inventoryMoveDelay.get()) {
-            pendingSlot = -1;
-            inventoryTimer = 0;
+        // Tick slot timers
+        for (PrintSlot slot : printSlots) {
+            slot.lockTimer = Math.min(slotLockTicks.get(), slot.lockTimer + 1);
+            slot.syncTimer = Math.min(antiOverrideTicks.get(), slot.syncTimer + 1);
         }
+
+        if (shouldPause()) return;
 
         // Clear cached positions every so often
         if (!cachedPositions.isEmpty() && cacheTimer++ >= placeRetryDelay.get()) {
@@ -383,32 +411,61 @@ public class DinoPrinter extends Module {
         // Sort blocks
         sortBlockPrints();
 
+        // Setup inventory copy
+        // We simulate an entire inventory due to desynchronization with rotations
+        mainInventory.clear();
+        for (int i = 0; i <= SlotUtils.MAIN_END; i++) {
+            mainInventory.add(mc.player.getInventory().getStack(i).copy());
+        }
+
         // Place blocks!
         int placedCount = 0;
         for (BlockPrint blockPrint : blockPrints) {
             if (placedCount >= blocksPerTick.get()) break;
 
             Item item = blockPrint.required.getBlock().asItem();
-            FindItemResult result = findPrintableItem(item);
-            if (!result.found()) continue;
+            int inventorySlot = getItemSlot(item);
+            if (inventorySlot == -1) continue;
+
+            int hotbarSlot = inventorySlot;
 
             // Move items into hotbar if allowed
-            if (!result.isHotbar() && canInventoryMove()) {
-                pendingItem = item;
-                pendingSlot = getSwapSlotToUse();
-                blockPrints.clear();
-                return;
+            if (inventorySlot > SlotUtils.HOTBAR_END) {
+                if (!canInventoryMove()) continue;
+
+                hotbarSlot = getSwapSlot();
+                if (hotbarSlot == -1) continue;
+
+                printSlots.get(hotbarSlot).reset();
+                printSlots.get(inventorySlot).reset();
+
+                // Simulate swap for our simulated inventory
+                ItemStack hotbarStack = mainInventory.get(hotbarSlot);
+                ItemStack inventoryStack = mainInventory.get(inventorySlot);
+                mainInventory.set(hotbarSlot, inventoryStack);
+                mainInventory.set(inventorySlot, hotbarStack);
+
+                // If locked on reset, exit out early.
+                if (printSlots.get(hotbarSlot).isLocked()) {
+                    pendingInventorySlot = inventorySlot;
+                    pendingHotbarSlot = hotbarSlot;
+                    blockPrints.clear();
+                    return;
+                }
+
+                // Simulate count decrement for our simulated inventory
+                inventoryStack.decrementUnlessCreative(1, mc.player);
             }
 
-            if (!result.isHotbar()) continue;
-
-            if (!autoSwitch.get() && mc.player.getInventory().getSelectedSlot() != result.slot()) continue;
+            if (!autoSwitch.get() && mc.player.getInventory().getSelectedSlot() != hotbarSlot) continue;
 
             if (exitSigns.get() && blockPrint.required.getBlock() instanceof AbstractSignBlock) {
                 lastSignPlaceTime = System.currentTimeMillis();
             }
 
-            place(blockPrint, result);
+            printSlots.get(hotbarSlot).syncTimer = 0;
+
+            place(blockPrint, inventorySlot, hotbarSlot);
 
             cachedPositions.add(blockPrint.blockPos);
             placedCount++;
@@ -421,16 +478,11 @@ public class DinoPrinter extends Module {
     // Post rotations
     @EventHandler(priority = EventPriority.LOW)
     private void onSendMovementPacketsPost(SendMovementPacketsEvent.Post event) {
-        // Move items into our hotbar AFTER rotations occur
-        if (pendingItem == null) return;
-
-        if (canInventoryMove()) {
-            FindItemResult result = InvUtils.find(itemStack -> pendingItem == itemStack.getItem());
-            if (result.found() && !result.isHotbar()) {
-                InvUtils.quickSwap().fromId(pendingSlot).to(result.slot());
-            }
+        if (pendingInventorySlot != -1 && pendingHotbarSlot != -1) {
+            InvUtils.quickSwap().fromId(pendingHotbarSlot).to(pendingInventorySlot);
+            pendingInventorySlot = -1;
+            pendingHotbarSlot = -1;
         }
-        pendingItem = null;
     }
 
     @EventHandler
@@ -440,14 +492,6 @@ public class DinoPrinter extends Module {
         if (System.currentTimeMillis() - lastSignPlaceTime > 500) return;
 
         event.setCancelled(true);
-    }
-
-    private boolean canInventoryMove() {
-        if (!autoSwitch.get() || !allowInventory.get()) return false;
-
-        if (stationaryMove.get() && mc.player.getVelocity().multiply(1, 0, 1).length() > 0.00001) return false;
-
-        return true;
     }
 
     private boolean shouldPause() {
@@ -466,43 +510,137 @@ public class DinoPrinter extends Module {
         return false;
     }
 
-    // Find the slot of an item we can print with
-    private FindItemResult findPrintableItem(Item item) {
-        // Dont allow inventory if we are pending
-        int end = pendingSlot != -1 ? 8 : mc.player.getInventory().size();
-        for (int i = 0; i <= end; i++) {
-            // Slots we are moving items into are locked
-            if (i == pendingSlot) continue; 
 
-            ItemStack stack = mc.player.getInventory().getStack(i);
-            if (item != stack.getItem()) continue;
+    /// Inventory
 
-            return new FindItemResult(i, 0);
+    private class PrintSlot {
+        public final int slot;
+        public int lockTimer;
+        public int syncTimer;
+
+        PrintSlot(int slot) {
+            this.slot = slot;
         }
 
-        return new FindItemResult(-1, 0);
+        public void reset() {
+            lockTimer = 0;
+            syncTimer = 0;
+        }
+
+        public void expire() {
+            lockTimer = slotLockTicks.get();
+            syncTimer = antiOverrideTicks.get();
+        }
+
+        public boolean isLocked() {
+            return lockTimer < slotLockTicks.get();
+        }
+
+        public boolean isCancelSync() {
+            return syncTimer < antiOverrideTicks.get();
+        }
+    }
+
+    @EventHandler
+    private void onPacketReceive(PacketEvent.Receive event)  {
+        // Cancel incoming packets that cause misplaces
+        // Misplaces are caused when the server resyncs the player but the player already changed their slots again
+        if (event.packet instanceof ScreenHandlerSlotUpdateS2CPacket packet) {
+            ScreenHandler handler = mc.player.currentScreenHandler;
+            if (packet.getSyncId() != handler.syncId) return;
+
+            int packetSlot = packet.getSlot();
+            if (packetSlot < 0 || packetSlot >= handler.slots.size()) return;
+
+            Slot screenSlot = handler.getSlot(packetSlot);
+            if (screenSlot.inventory != mc.player.getInventory()) return;
+
+            int slot = screenSlot.getIndex();
+            if (slot < 0 || slot >= printSlots.size()) return;
+
+            if (printSlots.get(slot).isCancelSync()) {
+                event.cancel();
+            }
+        } else if (event.packet instanceof InventoryS2CPacket packet) {
+            ScreenHandler handler = mc.player.currentScreenHandler;
+            if (packet.syncId() != handler.syncId) return;
+
+            List<ItemStack> contents = packet.contents();
+            for (PrintSlot printSlot : printSlots) {
+                if (!printSlot.isCancelSync()) continue;
+
+                int slot = handler.getSlotIndex(mc.player.getInventory(), printSlot.slot).orElse(-1);
+                if (slot >= 0 && slot < contents.size()) {
+                    contents.set(slot, mc.player.getInventory().getStack(printSlot.slot).copy());
+                }
+            }
+        }
+    }
+
+    // Find the slot of an item we can print with
+    private int getItemSlot(Item item) {
+        for (int i = 0; i <= SlotUtils.MAIN_END; i++) {
+            ItemStack stack = mainInventory.get(i);
+            if (item != stack.getItem()) continue;
+
+            // If we are already in the process of moving this item into the hotbar, dont bother with the same type
+            if (isSlotLocked(i)) return -1;
+
+            return i;
+        }
+
+        return -1;
     }
 
     // Find a good slot to swap items into
-    private int getSwapSlotToUse() {
-        FindItemResult empty = InvUtils.findEmpty();
-        if (empty.found() && empty.isHotbar()) return empty.slot();
+    private int getSwapSlot() {
+        // First look for an empty slot in our inventory to use
+        for (int i = 0; i < 9; i++) {
+            // Slots we are moving items into are locked and cannot be used temporarily
+            if (isSlotLocked(i)) continue;
 
-        return mc.player.getInventory().getSelectedSlot();
+            if (mainInventory.get(i).isEmpty()) {
+                return i;
+            }
+        }
+
+        // Otherwise just use our selected slot
+        int selected = mc.player.getInventory().getSelectedSlot();
+        if (!isSlotLocked(selected)) {
+            return selected;
+        }
+        return -1;
     }
 
+    private boolean isSlotLocked(int slot) {
+        if (slot < 0 || slot >= printSlots.size()) return false;
+
+        return printSlots.get(slot).isLocked();
+    }
+
+    private boolean canInventoryMove() {
+        if (!autoSwitch.get() || !allowInventory.get()) return false;
+
+        if (stationaryMove.get() && mc.player.getVelocity().multiply(1, 0, 1).length() > 0.00001) return false;
+
+        return true;
+    }
+
+
+    /// Placement
+
     // Custom placement that is far better than meteor's standard
-    private void place(BlockPrint blockPrint, FindItemResult result) {
+    private void place(BlockPrint blockPrint, int inventorySlot, int hotbarSlot) {
         if (rotate.get() || blockPrint.shouldRotatePlace()) {
             Rotations.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
-                interactPlace(blockPrint, result);
+                interactPlace(blockPrint, inventorySlot, hotbarSlot);
             });
         } else {
-            interactPlace(blockPrint, result);
+            interactPlace(blockPrint, inventorySlot, hotbarSlot);
         }
     }
 
-    private void interactPlace(BlockPrint blockPrint, FindItemResult result) {
+    private void interactPlace(BlockPrint blockPrint, int inventorySlot, int hotbarSlot) {
         // Send our inputs with sneaking injected
         boolean isSneaking = mc.player.isSneaking();
         PlayerInput old = mc.player.input.playerInput;
@@ -512,14 +650,20 @@ public class DinoPrinter extends Module {
             mc.player.setSneaking(true);
         }
 
-        InvUtils.swap(result.slot(), swapBack.get());
+        if (autoSwitch.get()) {
+            if (inventorySlot > SlotUtils.HOTBAR_END) {
+                InvUtils.quickSwap().fromId(hotbarSlot).to(inventorySlot);
+            }
+
+            InvUtils.swap(hotbarSlot, swapBack.get());
+        }
 
         if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockPrint.hit).isAccepted()) {
             if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
             else mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
         }
 
-        if (swapBack.get()) InvUtils.swapBack();
+        if (autoSwitch.get() && swapBack.get()) InvUtils.swapBack();
 
         // Go back to our old inputs
         if (sneakPlace.get() && !isSneaking) {
@@ -615,7 +759,6 @@ public class DinoPrinter extends Module {
     private static final Comparator<BlockPrint> hotbarAlgorithm = (a, b) -> {
         Item itemA = a.required.getBlock().asItem();
         Item itemB = b.required.getBlock().asItem();
-
         boolean aInHotbar = InvUtils.findInHotbar(itemStack -> itemA == itemStack.getItem()).found();
         boolean bInHotbar = InvUtils.findInHotbar(itemStack -> itemB == itemStack.getItem()).found();
 
