@@ -18,6 +18,10 @@ It is built from scratch and is **not a fork of any other Meteor printer**.
 
 The overarching goal of Dino Printer is to provide reliable schematic printing while still supporting advanced features that are difficult to implement on stricter servers.
 
+https://github.com/user-attachments/assets/70aefd6e-6777-4953-ad41-a9c9c4d5f375
+
+Demonstration filmed on Constantiam.net.
+
 # How It Works
 
 Dino Printer uses a dynamic system to determine **how each block should be placed**.
