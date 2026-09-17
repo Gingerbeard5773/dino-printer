@@ -43,10 +43,10 @@ This makes the system highly flexible and allows it to work with **nearly all Mi
 - This addon requires [Meteor Client](https://meteorclient.com/).
 
 ### Dependencies
-Use the fork of Litematica maintained by [sakura-ryoko](https://github.com/sakura-ryoko)
+Litematica is maintained by [sakura-ryoko](https://github.com/sakura-ryoko)
 
-- [Litematica](https://github.com/sakura-ryoko/litematica)
-- [Malilib](https://github.com/sakura-ryoko/malilib)
+- [Litematica](https://modrinth.com/mod/litematica)
+- [Malilib](https://modrinth.com/mod/malilib)
 
 # Configuration
 
