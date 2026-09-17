@@ -7,6 +7,7 @@
 package dinosaurwizard.dinoprinter.modules;
 
 import dinosaurwizard.dinoprinter.utils.BlockPrint;
+import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import meteordevelopment.meteorclient.MeteorClient;
@@ -369,6 +370,10 @@ public class DinoPrinter extends Module {
             slot.lockTimer = Math.min(slotLockTicks.get(), slot.lockTimer + 1);
             slot.syncTimer = Math.min(antiOverrideTicks.get(), slot.syncTimer + 1);
         }
+
+        // Rendering must be active
+        if (!Configs.Visuals.ENABLE_RENDERING.getBooleanValue()) return;
+        if (!Configs.Visuals.ENABLE_SCHEMATIC_RENDERING.getBooleanValue()) return;
 
         if (shouldPause()) return;
 
@@ -753,7 +758,7 @@ public class DinoPrinter extends Module {
     private static double distanceToPlayer(BlockPos pos) {
         if (MeteorClient.mc.player == null) return 0;
 
-        return MeteorClient.mc.player.getEntityPos().squaredDistanceTo(pos.toCenterPos());
+        return MeteorClient.mc.player.getPos().squaredDistanceTo(pos.toCenterPos());
     }
 
     private static final Comparator<BlockPrint> hotbarAlgorithm = (a, b) -> {

@@ -25,7 +25,7 @@ public class PrinterPlaceContext extends ItemPlacementContext {
     private final boolean sneaking;
 
     public PrinterPlaceContext(PlayerEntity player, float yaw, float pitch, boolean sneaking, Hand hand, ItemStack stack, BlockHitResult hitResult) {
-        super(player.getEntityWorld(), player, hand, stack, hitResult);
+        super(player.getWorld(), player, hand, stack, hitResult);
         this.yaw = yaw;
         this.pitch = pitch;
         this.sneaking = sneaking;
