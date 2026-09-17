@@ -284,8 +284,6 @@ public class BlockPrint {
                 if (simulated.get(Properties.PICKLES) <= existing.get(Properties.PICKLES)) return false;
             } else if (simulated.contains(Properties.FLOWER_AMOUNT) && existing.contains(Properties.FLOWER_AMOUNT)) {
                 if (simulated.get(Properties.FLOWER_AMOUNT) <= existing.get(Properties.FLOWER_AMOUNT)) return false;
-            } else if (simulated.contains(Properties.SEGMENT_AMOUNT) && existing.contains(Properties.SEGMENT_AMOUNT)) {
-                if (simulated.get(Properties.SEGMENT_AMOUNT) <= existing.get(Properties.SEGMENT_AMOUNT)) return false;
             }
 
             // Multi face blocks - vines, glow lichen, sculk veins
@@ -382,8 +380,6 @@ public class BlockPrint {
             return required.get(Properties.PICKLES) > existing.get(Properties.PICKLES);
         } else if (required.contains(Properties.FLOWER_AMOUNT) && existing.contains(Properties.FLOWER_AMOUNT)) {
             return required.get(Properties.FLOWER_AMOUNT) > existing.get(Properties.FLOWER_AMOUNT);
-        } else if (required.contains(Properties.SEGMENT_AMOUNT) && existing.contains(Properties.SEGMENT_AMOUNT)) {
-            return required.get(Properties.SEGMENT_AMOUNT) > existing.get(Properties.SEGMENT_AMOUNT);
         }
 
         if (required.getBlock() instanceof MultifaceGrowthBlock || required.getBlock() instanceof VineBlock) {
