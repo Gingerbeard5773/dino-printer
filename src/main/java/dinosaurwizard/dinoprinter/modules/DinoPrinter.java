@@ -35,8 +35,8 @@ import net.minecraft.block.BlockState;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
 import net.minecraft.network.packet.s2c.play.InventoryS2CPacket;
 import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
 import net.minecraft.screen.ScreenHandler;
@@ -645,8 +645,8 @@ public class DinoPrinter extends Module {
         boolean isSneaking = mc.player.isSneaking();
         PlayerInput old = mc.player.input.playerInput;
         if (sneakPlace.get() && !isSneaking) {
-            PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
-            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(sneak));
+            mc.player.input.playerInput = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
+            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.PRESS_SHIFT_KEY));
             mc.player.setSneaking(true);
         }
 
@@ -665,9 +665,9 @@ public class DinoPrinter extends Module {
 
         if (autoSwitch.get() && swapBack.get()) InvUtils.swapBack();
 
-        // Go back to our old inputs
         if (sneakPlace.get() && !isSneaking) {
-            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(old));
+            mc.player.input.playerInput = old;
+            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.RELEASE_SHIFT_KEY));
             mc.player.setSneaking(isSneaking);
         }
 
@@ -753,7 +753,7 @@ public class DinoPrinter extends Module {
     private static double distanceToPlayer(BlockPos pos) {
         if (MeteorClient.mc.player == null) return 0;
 
-        return MeteorClient.mc.player.getEntityPos().squaredDistanceTo(pos.toCenterPos());
+        return MeteorClient.mc.player.getPos().squaredDistanceTo(pos.toCenterPos());
     }
 
     private static final Comparator<BlockPrint> hotbarAlgorithm = (a, b) -> {
