@@ -7,6 +7,8 @@
 package dinosaurwizard.dinoprinter.modules;
 
 import dinosaurwizard.dinoprinter.utils.BlockPrint;
+import fi.dy.masa.litematica.config.Configs;
+import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import meteordevelopment.meteorclient.MeteorClient;
@@ -32,6 +34,8 @@ import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.block.AbstractSignBlock;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.FluidBlock;
+import net.minecraft.block.ShapeContext;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -45,6 +49,7 @@ import net.minecraft.state.property.Properties;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.PlayerInput;
+import net.minecraft.world.World;
 
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.ArrayList;
@@ -370,6 +375,11 @@ public class DinoPrinter extends Module {
             slot.syncTimer = Math.min(antiOverrideTicks.get(), slot.syncTimer + 1);
         }
 
+        // Rendering must be active
+        if (!Configs.Visuals.ENABLE_RENDERING.getBooleanValue()) return;
+        if (!Configs.Visuals.ENABLE_SCHEMATIC_RENDERING.getBooleanValue()) return;
+
+        // Pause entire process if necessary
         if (shouldPause()) return;
 
         // Clear cached positions every so often
@@ -398,7 +408,9 @@ public class DinoPrinter extends Module {
                     BlockState required = worldSchematic.getBlockState(blockPos);
                     BlockState existing = mc.world.getBlockState(blockPos);
 
-                    BlockPrint blockPrint = new BlockPrint(blockPos, required, existing, this);
+                    if (!isValid(blockPos, required, existing)) continue;
+
+                    BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required, existing, this);
                     if (!blockPrint.canPlace()) continue;
 
                     blockPrints.add(blockPrint);
@@ -492,6 +504,37 @@ public class DinoPrinter extends Module {
         if (System.currentTimeMillis() - lastSignPlaceTime > 500) return;
 
         event.setCancelled(true);
+    }
+
+    // Determine if a location can be printed at
+    private boolean isValid(BlockPos blockPos, BlockState required, BlockState existing) {
+        // Blacklisted states
+        if (required.isAir() || required.getBlock() instanceof FluidBlock) return false;
+
+        if (!incrementalStates.get() || !BlockPrint.isIncremental(required, existing)) {
+            // Spot must be air or some other replaceable block
+            if (!existing.isReplaceable()) return false;
+
+            // Spot cannot be required blockstate
+            if (required.getBlock() == existing.getBlock()) return false;
+
+            // Don't place in a position we already attempted
+            if (cachedPositions.contains(blockPos)) return false;
+        }
+
+        // Only rendered schematic blocks can be placed
+        if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) return false;
+
+        // Must be within world boundaries
+        if (!World.isValid(blockPos)) return false;
+
+        // Check if legally placeable. For example, if its a torch, it can only be placed onto another block.
+        if (!required.canPlaceAt(mc.world, blockPos)) return false;
+
+        // No intersecting entities at our position
+        if (!mc.world.canPlace(required, blockPos, ShapeContext.absent())) return false;
+
+        return true;
     }
 
     private boolean shouldPause() {

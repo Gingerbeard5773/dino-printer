@@ -31,16 +31,13 @@ package dinosaurwizard.dinoprinter.utils;
 
 import dinosaurwizard.dinoprinter.modules.DinoPrinter;
 import dinosaurwizard.dinoprinter.utils.PrinterPlaceContext;
-import fi.dy.masa.litematica.data.DataManager;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.ChestBlock;
-import net.minecraft.block.FluidBlock;
 import net.minecraft.block.MultifaceGrowthBlock;
 import net.minecraft.block.VineBlock;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.block.enums.SlabType;
-import net.minecraft.block.ShapeContext;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemPlacementContext;
@@ -57,7 +54,6 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.RaycastContext;
-import net.minecraft.world.World;
 
 import java.util.List;
 import java.util.LinkedHashSet;
@@ -71,9 +67,10 @@ public class BlockPrint {
     public final BlockState required;
     public final BlockState existing;
     public final BlockHitResult hit;
+    private final boolean rotatable;
     private float placeYaw;
     private float placePitch;
-    private boolean useHackRotation = false;
+    private boolean useRotation = false;
 
     public BlockPrint(BlockPos blockPos, BlockState required, BlockState existing, DinoPrinter printer) {
         this.printer = printer;
@@ -81,42 +78,8 @@ public class BlockPrint {
         this.required = required;
         this.existing = existing;
 
-        if (isValid()) {
-            this.blockPos = new BlockPos(blockPos);
-            this.hit = calculateBestPlaceHit();
-        } else {
-            this.hit = null;
-        }
-    }
-
-    private boolean isValid() {
-        // Blacklisted states
-        if (required.isAir() || required.getBlock() instanceof FluidBlock) return false;
-
-        if (!isIncremental()) {
-            // Spot must be air or some other replaceable block
-            if (!existing.isReplaceable()) return false;
-
-            // Spot cannot be required blockstate
-            if (required.getBlock() == existing.getBlock()) return false;
-
-            // Don't place in a position we already attempted
-            if (printer.cachedPositions.contains(blockPos)) return false;
-        }
-
-        // Only rendered schematic blocks can be placed
-        if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) return false;
-
-        // Must be within world boundaries
-        if (!World.isValid(blockPos)) return false;
-
-        // Check if legally placeable. For example, if its a torch, it can only be placed onto another block.
-        if (!required.canPlaceAt(mc.world, blockPos)) return false;
-
-        // No intersecting entities at our position
-        if (!mc.world.canPlace(required, blockPos, ShapeContext.absent())) return false;
-
-        return true;
+        this.rotatable = isRotatable();
+        this.hit = calculateBestPlaceHit();
     }
 
     public boolean canPlace() {
@@ -125,7 +88,7 @@ public class BlockPrint {
 
     // Should we do special rotation when placing this block?
     public boolean shouldRotatePlace() {
-        return printer.rotationPlace.get() && isRotatable();
+        return printer.rotationPlace.get() && rotatable;
     }
 
     // Determine if our required blockstate has directionality.
@@ -142,14 +105,14 @@ public class BlockPrint {
 
     // Yaw when placing the block
     public double getYaw() {
-        if (useHackRotation) return placeYaw;
+        if (useRotation) return placeYaw;
 
         return Rotations.getYaw(hit.getPos());
     }
 
     // Pitch when placing the block
     public double getPitch() {
-        if (useHackRotation) return placePitch;
+        if (useRotation) return placePitch;
 
         return Rotations.getPitch(hit.getPos());
     }
@@ -190,7 +153,7 @@ public class BlockPrint {
 
         // If we couldn't find an adjacent block to place onto, check points on our own block position
         // Only for air placement or if we have an incremental block
-        if (printer.airPlace.get() || isIncremental()) {
+        if (printer.airPlace.get() || (printer.incrementalStates.get() && isIncremental(required, existing))) {
             for (Direction direction : Direction.values()) {
                 Set<Vec3d> points = getShapeFacePoints(blockPos, direction);
                 for (Vec3d point : points) {
@@ -209,13 +172,15 @@ public class BlockPrint {
     }
 
     private boolean isMatchingRequirements(BlockHitResult placeHit) {
-        if (!isMatchingPropertiesFromHit(placeHit)) return false;
-        if (!isValidRotationHit(placeHit)) return false;
+        if (required.getBlock().getStateManager().getProperties().isEmpty()) return true;
+
+        if (!isMatchingProperties(placeHit)) return false;
+        if (!isMatchingRotation(placeHit)) return false;
         return true;
     }
 
     // Check if the BlockHitResult has the same properties
-    private boolean isMatchingPropertiesFromHit(BlockHitResult blockHit) {
+    private boolean isMatchingProperties(BlockHitResult blockHit) {
         float yaw = (float) Rotations.getYaw(blockHit.getPos());
         float pitch = (float) Rotations.getPitch(blockHit.getPos());
         BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
@@ -309,7 +274,7 @@ public class BlockPrint {
     }
 
     // Check if the BlockHitResult has the correct rotation
-    private boolean isMatchingFacingFromHit(float yaw, float pitch, BlockHitResult blockHit) {
+    private boolean isMatchingDirection(float yaw, float pitch, BlockHitResult blockHit) {
         BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
         if (simulated == null) return false;
 
@@ -336,8 +301,8 @@ public class BlockPrint {
     }
 
     // Calculate rotation from a hit. Also sets Yaw and Pitch the player should use when placing the block.
-    private boolean isValidRotationHit(BlockHitResult blockHit) {
-        if (!printer.rotationPlace.get()) return true;
+    private boolean isMatchingRotation(BlockHitResult blockHit) {
+        if (!printer.rotationPlace.get() || !rotatable) return true;
 
         float legitYaw = (float) Rotations.getYaw(blockHit.getPos());
         float legitPitch = (float) Rotations.getPitch(blockHit.getPos());
@@ -348,25 +313,29 @@ public class BlockPrint {
             List<Float> pitches = getSimulationPitches(legitPitch);
             for (float rotateYaw : yaws) {
                 for (float rotatePitch : pitches) {
-                    if (!isMatchingFacingFromHit(rotateYaw, rotatePitch, blockHit)) continue;
-
+                    if (!isMatchingDirection(rotateYaw, rotatePitch, blockHit)) continue;
                     placeYaw = rotateYaw;
                     placePitch = rotatePitch;
-                    useHackRotation = true;
+                    useRotation = true;
                     return true;
                 }
             }
         }
 
         // Strict rotation calculation
-        if (isMatchingFacingFromHit(legitYaw, legitPitch, blockHit)) return true;
+        if (isMatchingDirection(legitYaw, legitPitch, blockHit)) {
+            placeYaw = legitYaw;
+            placePitch = legitPitch;
+            useRotation = true;
+            return true;
+        }
 
         return false;
     }
 
     // Determines if we can place again to increment the block state.
-    private boolean isIncremental() {
-        if (!printer.incrementalStates.get()) return false;
+    public static boolean isIncremental(BlockState required, BlockState existing) {
+        if (required.getBlock().getStateManager().getProperties().isEmpty()) return false;
 
         if (required.getBlock() != existing.getBlock()) return false;
 
@@ -397,13 +366,13 @@ public class BlockPrint {
         return false;
     }
 
-    private boolean isPointValid(Vec3d point, BlockPos adjacent, Direction direction) {
+    private boolean isPointValid(Vec3d point, BlockPos pos, Direction direction) {
         // Place point must be within range
         double range = printer.placeRange.get();
         if (mc.player.getEyePos().squaredDistanceTo(point) > range * range) return false;
 
         // Must be visible if applicable
-        if (!printer.wallPlace.get() && !isPointVisible(point, adjacent, direction)) return false;
+        if (!printer.wallPlace.get() && !isPointVisible(point, pos, direction)) return false;
 
         return true;
     }
@@ -411,9 +380,9 @@ public class BlockPrint {
     // Determines if a player can see a point on a block's face
     private boolean isPointVisible(Vec3d point, BlockPos pos, Direction direction) {
         RaycastContext context = new RaycastContext(mc.player.getEyePos(), point, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player);
-        BlockHitResult hit = mc.world.raycast(context);
+        BlockHitResult ray = mc.world.raycast(context);
 
-        return hit.getType() == HitResult.Type.MISS || (hit.getBlockPos().equals(pos) && hit.getSide() == direction);
+        return ray.getType() == HitResult.Type.MISS || (ray.getBlockPos().equals(pos) && ray.getSide() == direction);
     }
 
     // AIR SHAPE is the shape that air-place utilizes. It is slightly smaller than a normal minecraft block.
