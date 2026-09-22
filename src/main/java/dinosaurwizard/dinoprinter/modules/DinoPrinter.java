@@ -664,9 +664,14 @@ public class DinoPrinter extends Module {
     private boolean canInventoryMove() {
         if (!autoSwitch.get() || !allowInventory.get()) return false;
 
-        if (stationaryMove.get() && mc.player.getVelocity().multiply(1, 0, 1).length() > 0.00001) return false;
+        if (stationaryMove.get() && isPlayerMoving()) return false;
 
         return true;
+    }
+
+    private boolean isPlayerMoving() {
+        PlayerInput input = mc.player.input.playerInput;
+        return input.forward() || input.backward() || input.left() || input.right() || input.jump();
     }
 
 
