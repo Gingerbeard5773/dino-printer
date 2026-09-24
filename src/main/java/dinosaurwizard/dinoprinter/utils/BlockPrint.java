@@ -32,9 +32,12 @@ package dinosaurwizard.dinoprinter.utils;
 import dinosaurwizard.dinoprinter.modules.DinoPrinter;
 import dinosaurwizard.dinoprinter.utils.PrinterPlaceContext;
 import meteordevelopment.meteorclient.utils.player.Rotations;
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.ChestBlock;
 import net.minecraft.block.MultifaceGrowthBlock;
+import net.minecraft.block.TripwireBlock;
+import net.minecraft.block.TripwireHookBlock;
 import net.minecraft.block.VineBlock;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.block.enums.SlabType;
@@ -181,13 +184,18 @@ public class BlockPrint {
 
     // Check if the BlockHitResult has the same properties
     private boolean isMatchingProperties(BlockHitResult blockHit) {
+        Block block = required.getBlock();
+
+        // Ignore property matching for blocks:
+        if (block instanceof TripwireBlock || block instanceof TripwireHookBlock) return true;
+
         float yaw = (float) Rotations.getYaw(blockHit.getPos());
         float pitch = (float) Rotations.getPitch(blockHit.getPos());
         BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
         if (simulated == null) return false;
 
         // Unequal blocks get booted. e.g standing signs vs wall signs
-        if (required.getBlock() != simulated.getBlock()) return false;
+        if (block != simulated.getBlock()) return false;
 
         if (printer.halfBlocks.get()) {
             // Slab Type - half slabs & also handling of double slabs
@@ -214,9 +222,12 @@ public class BlockPrint {
             // Block Face - wall mounted blocks like torches or levers
             } else if (required.contains(Properties.BLOCK_FACE) && simulated.contains(Properties.BLOCK_FACE)) {
                 if (required.get(Properties.BLOCK_FACE) != simulated.get(Properties.BLOCK_FACE)) return false;
-            // Attachment - hanging signs
+            // Attachment - bells
             } else if (required.contains(Properties.ATTACHMENT) && simulated.contains(Properties.ATTACHMENT)) {
                 if (required.get(Properties.ATTACHMENT) != simulated.get(Properties.ATTACHMENT)) return false;
+            // Attached - hanging signs
+            } else if (required.contains(Properties.ATTACHED) && simulated.contains(Properties.ATTACHED)) {
+                if (required.get(Properties.ATTACHED) != simulated.get(Properties.ATTACHED)) return false;
             // Hanging - lanterns
             } else if (required.contains(Properties.HANGING) && simulated.contains(Properties.HANGING)) {
                 if (required.get(Properties.HANGING) != simulated.get(Properties.HANGING)) return false;
@@ -254,7 +265,7 @@ public class BlockPrint {
             }
 
             // Multi face blocks - vines, glow lichen, sculk veins
-            if (required.getBlock() instanceof MultifaceGrowthBlock || required.getBlock() instanceof VineBlock) {
+            if (block instanceof MultifaceGrowthBlock || block instanceof VineBlock) {
                 if (isMatchingPropertyMultiFace(simulated, Properties.UP)) return true;
                 if (isMatchingPropertyMultiFace(simulated, Properties.DOWN)) return true;
                 if (isMatchingPropertyMultiFace(simulated, Properties.EAST)) return true;
@@ -335,9 +346,10 @@ public class BlockPrint {
 
     // Determines if we can place again to increment the block state.
     public static boolean isIncremental(BlockState required, BlockState existing) {
-        if (required.getBlock().getStateManager().getProperties().isEmpty()) return false;
+        Block block = required.getBlock();
+        if (block.getStateManager().getProperties().isEmpty()) return false;
 
-        if (required.getBlock() != existing.getBlock()) return false;
+        if (block != existing.getBlock()) return false;
 
         if (required.contains(Properties.SLAB_TYPE) && existing.contains(Properties.SLAB_TYPE)) {
             return required.get(Properties.SLAB_TYPE) == SlabType.DOUBLE && existing.get(Properties.SLAB_TYPE) != SlabType.DOUBLE;
@@ -355,7 +367,7 @@ public class BlockPrint {
             return required.get(Properties.SEGMENT_AMOUNT) > existing.get(Properties.SEGMENT_AMOUNT);
         }
 
-        if (required.getBlock() instanceof MultifaceGrowthBlock || required.getBlock() instanceof VineBlock) {
+        if (block instanceof MultifaceGrowthBlock || block instanceof VineBlock) {
             if (required.contains(Properties.UP) && required.get(Properties.UP) && !existing.get(Properties.UP)) return true;
             if (required.contains(Properties.DOWN) && required.get(Properties.DOWN) && !existing.get(Properties.DOWN)) return true;
             if (required.contains(Properties.EAST) && required.get(Properties.EAST) && !existing.get(Properties.EAST)) return true;
