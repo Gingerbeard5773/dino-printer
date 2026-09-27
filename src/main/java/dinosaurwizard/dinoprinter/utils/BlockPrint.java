@@ -9,8 +9,8 @@
         /                     /|
        /                     / |   Here we have a diagram of a block's face.
       /                     /  |   Lets say dino printer wants to see if this is a good block to place onto-
-     /                     /   |   First it gets the shape of the adjacent block, then it creates a set of points that correspond with the shape's vertices.
-    +---------------------+    |   Each spot is tested to see if it passes all requirements.
+     /                     /   |   First it gets the shape of the adjacent block, then it creates a set of points that correspond with the shape's bounding boxes.
+    +---------------------+    |   Each point is tested to see if it passes all requirements.
     |                     |    |   What are those requirements?
     | X        X        X |    |   Raycasting: can we see the point from our player's eyes?
     |                     |    |   Half block: if the block we want to place is a slab, should we place on the top or bottom of the adjacent block's face?
@@ -400,39 +400,30 @@ public class BlockPrint {
     // AIR SHAPE is the shape that air-place utilizes. It is slightly smaller than a normal minecraft block.
     private static final VoxelShape AIR_SHAPE = VoxelShapes.cuboid(0.01, 0.01, 0.01, 1.0 - 0.01, 1.0 - 0.01, 1.0 - 0.01);
 
-    private static final double[] samples = {1.0 / 6.0, 0.5, 5.0 / 6.0};
+    private static final double[] samples = {0.1666666667, 0.5, 0.8333333333};
 
-    // Gets a list of relevant vertices on a block shape's specific face
+    // Gets a list of points across a block shape's face
+    // This is dynamic, so blocks like stairs or hoppers have more faces/points
     private Set<Vec3d> getShapeFacePoints(BlockPos pos, Direction face) {
         Set<Vec3d> points = new LinkedHashSet<>();
 
-        BlockState blockState = mc.world.getBlockState(pos);
-        VoxelShape shape = blockState.isReplaceable() ? AIR_SHAPE : blockState.getOutlineShape(mc.world, pos);
+        BlockState state = mc.world.getBlockState(pos);
+        VoxelShape shape = state.isReplaceable() ? AIR_SHAPE : state.getOutlineShape(mc.world, pos);
 
         for (Box box : shape.getBoundingBoxes()) {
-            double minX = box.minX + pos.getX();
-            double minY = box.minY + pos.getY();
-            double minZ = box.minZ + pos.getZ();
-            double maxX = box.maxX + pos.getX();
-            double maxY = box.maxY + pos.getY();
-            double maxZ = box.maxZ + pos.getZ();
+            double minX = box.minX + pos.getX(), minY = box.minY + pos.getY(), minZ = box.minZ + pos.getZ();
+            double maxX = box.maxX + pos.getX(), maxY = box.maxY + pos.getY(), maxZ = box.maxZ + pos.getZ();
 
+            // Samples are 'multiplied' against eachother, for a total of 9 points per block face (as shown on the diagram)
             for (double u : samples) {
                 for (double v : samples) {
-                    double x  = MathHelper.lerp(u, minX, maxX);
-                    double y  = MathHelper.lerp(u, minY, maxY);
-                    double z  = MathHelper.lerp(u, minZ, maxZ);
-                    double x2 = MathHelper.lerp(v, minX, maxX);
-                    double y2 = MathHelper.lerp(v, minY, maxY);
-                    double z2 = MathHelper.lerp(v, minZ, maxZ);
-
                     switch (face) {
-                        case DOWN ->  points.add(new Vec3d(x, minY, z2));
-                        case UP ->    points.add(new Vec3d(x, maxY, z2));
-                        case NORTH -> points.add(new Vec3d(x, y2, minZ));
-                        case SOUTH -> points.add(new Vec3d(x, y2, maxZ));
-                        case WEST ->  points.add(new Vec3d(minX, y, z2));
-                        case EAST ->  points.add(new Vec3d(maxX, y, z2));
+                        case DOWN ->  points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), minY, MathHelper.lerp(v, minZ, maxZ)));
+                        case UP ->    points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), maxY, MathHelper.lerp(v, minZ, maxZ)));
+                        case NORTH -> points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), MathHelper.lerp(v, minY, maxY), minZ));
+                        case SOUTH -> points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), MathHelper.lerp(v, minY, maxY), maxZ));
+                        case WEST ->  points.add(new Vec3d(minX, MathHelper.lerp(u, minY, maxY), MathHelper.lerp(v, minZ, maxZ)));
+                        case EAST ->  points.add(new Vec3d(maxX, MathHelper.lerp(u, minY, maxY), MathHelper.lerp(v, minZ, maxZ)));
                     }
                 }
             }
