@@ -180,6 +180,13 @@ public class DinoPrinter extends Module {
         .build()
     );
 
+    public final Setting<Boolean> fluids = sgAdvanced.add(new BoolSetting.Builder()
+        .name("fluids")
+        .description("Allow placement of fluids using their respective buckets.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final Setting<Boolean> exitSigns = sgAdvanced.add(new BoolSetting.Builder()
         .name("exit-signs")
         .description("Auto exit sign screens.")
@@ -435,7 +442,7 @@ public class DinoPrinter extends Module {
         for (BlockPrint blockPrint : blockPrints) {
             if (placedCount >= blocksPerTick.get()) break;
 
-            Item item = blockPrint.required.getBlock().asItem();
+            Item item = blockPrint.asItem();
             int inventorySlot = getItemSlot(item);
             if (inventorySlot == -1) continue;
 
@@ -508,15 +515,17 @@ public class DinoPrinter extends Module {
 
     // Determine if a location can be printed at
     private boolean isValid(BlockPos blockPos, BlockState required, BlockState existing) {
-        // Blacklisted states
-        if (required.isAir() || required.getBlock() instanceof FluidBlock) return false;
+        if (required.isAir()) return false;
+
+        boolean fluid = required.getBlock() instanceof FluidBlock;
+        if (fluid && (!required.getFluidState().isStill() || !fluids.get())) return false;
 
         if (!incrementalStates.get() || !BlockPrint.isIncremental(required, existing)) {
             // Spot must be air or some other replaceable block
             if (!existing.isReplaceable()) return false;
 
-            // Spot cannot be required blockstate
-            if (required.getBlock() == existing.getBlock()) return false;
+            // Spot is not already the required blockstate
+            if (required.getBlock() == existing.getBlock() && (!fluid || existing.getFluidState().isStill())) return false;
 
             // Don't place in a position we already attempted
             if (cachedPositions.contains(blockPos)) return false;
@@ -707,9 +716,13 @@ public class DinoPrinter extends Module {
             InvUtils.swap(hotbarSlot, swapBack.get());
         }
 
-        if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockPrint.hit).isAccepted()) {
-            if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
-            else mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+        // Buckets have their own unique logic
+        if (blockPrint.fluid) {
+            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            swingHand();
+        // Otherwise do standard interaction
+        } else if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockPrint.hit).isAccepted()) {
+            swingHand();
         }
 
         if (autoSwitch.get() && swapBack.get()) InvUtils.swapBack();
@@ -726,6 +739,10 @@ public class DinoPrinter extends Module {
         }
     }
 
+    private void swingHand() {
+        if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
+        else mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+    }
 
     /// Rendering
 
@@ -807,8 +824,8 @@ public class DinoPrinter extends Module {
     }
 
     private static final Comparator<BlockPrint> hotbarAlgorithm = (a, b) -> {
-        Item itemA = a.required.getBlock().asItem();
-        Item itemB = b.required.getBlock().asItem();
+        Item itemA = a.asItem();
+        Item itemB = b.asItem();
         boolean aInHotbar = InvUtils.findInHotbar(itemStack -> itemA == itemStack.getItem()).found();
         boolean bInHotbar = InvUtils.findInHotbar(itemStack -> itemB == itemStack.getItem()).found();
 

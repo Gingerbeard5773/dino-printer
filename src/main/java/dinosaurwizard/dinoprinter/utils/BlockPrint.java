@@ -32,16 +32,12 @@ package dinosaurwizard.dinoprinter.utils;
 import dinosaurwizard.dinoprinter.modules.DinoPrinter;
 import dinosaurwizard.dinoprinter.utils.PrinterPlaceContext;
 import meteordevelopment.meteorclient.utils.player.Rotations;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.ChestBlock;
-import net.minecraft.block.MultifaceGrowthBlock;
-import net.minecraft.block.TripwireBlock;
-import net.minecraft.block.TripwireHookBlock;
-import net.minecraft.block.VineBlock;
+import net.minecraft.block.*;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.block.enums.SlabType;
 import net.minecraft.item.BlockItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.state.property.Properties;
@@ -70,6 +66,7 @@ public class BlockPrint {
     public final BlockState required;
     public final BlockState existing;
     public final BlockHitResult hit;
+    public final boolean fluid;
     private final boolean rotatable;
     private float placeYaw;
     private float placePitch;
@@ -81,6 +78,7 @@ public class BlockPrint {
         this.required = required;
         this.existing = existing;
 
+        this.fluid = required.getBlock() instanceof FluidBlock;
         this.rotatable = isRotatable();
         this.hit = calculateBestPlaceHit();
     }
@@ -91,7 +89,7 @@ public class BlockPrint {
 
     // Should we do special rotation when placing this block?
     public boolean shouldRotatePlace() {
-        return printer.rotationPlace.get() && rotatable;
+        return (printer.rotationPlace.get() && rotatable) || fluid;
     }
 
     // Determine if our required blockstate has directionality.
@@ -124,7 +122,7 @@ public class BlockPrint {
     // The simulated place state is effectively the blockState when it is actually placed, allowing us to determine what it will look like before it is placed.
     // This can be used to compare certain attributes such as the facing direction.
     private BlockState getSimulatedPlaceState(float yaw, float pitch, BlockHitResult blockHit) {
-        ItemStack stack = required.getBlock().asItem().getDefaultStack();
+        ItemStack stack = asItem().getDefaultStack();
         if (!(stack.getItem() instanceof BlockItem blockItem)) return null;
 
         boolean sneaking = printer.sneakPlace.get() || mc.player.isSneaking();
@@ -156,7 +154,9 @@ public class BlockPrint {
 
         // If we couldn't find an adjacent block to place onto, check points on our own block position
         // Only for air placement or if we have an incremental block
-        if (printer.airPlace.get() || (printer.incrementalStates.get() && isIncremental(required, existing))) {
+        boolean airplace = printer.airPlace.get() && !fluid;
+        boolean incremental = printer.incrementalStates.get() && isIncremental(required, existing);
+        if (airplace || incremental) {
             for (Direction direction : Direction.values()) {
                 Set<Vec3d> points = getShapeFacePoints(blockPos, direction);
                 for (Vec3d point : points) {
@@ -175,7 +175,7 @@ public class BlockPrint {
     }
 
     private boolean isMatchingRequirements(BlockHitResult placeHit) {
-        if (required.getBlock().getStateManager().getProperties().isEmpty()) return true;
+        if (required.getBlock().getStateManager().getProperties().isEmpty() || fluid) return true;
 
         if (!isMatchingProperties(placeHit)) return false;
         if (!isMatchingRotation(placeHit)) return false;
@@ -384,7 +384,7 @@ public class BlockPrint {
         if (mc.player.getEyePos().squaredDistanceTo(point) > range * range) return false;
 
         // Must be visible if applicable
-        if (!printer.wallPlace.get() && !isPointVisible(point, pos, direction)) return false;
+        if ((!printer.wallPlace.get() || fluid) && !isPointVisible(point, pos, direction)) return false;
 
         return true;
     }
@@ -473,5 +473,18 @@ public class BlockPrint {
             return VERTICAL_PITCHES;
         }
         return List.of(legitPitch);
+    }
+
+    // Account for edge case blocks that dont map to their respective placer item properly
+    public Item asItem() {
+        Block block = required.getBlock();
+        if (block instanceof FlowerPotBlock) return Items.FLOWER_POT;
+
+        if (fluid) {
+            if (block == Blocks.WATER) return Items.WATER_BUCKET;
+            if (block == Blocks.LAVA)  return Items.LAVA_BUCKET;
+        }
+
+        return block.asItem();
     }
 }
