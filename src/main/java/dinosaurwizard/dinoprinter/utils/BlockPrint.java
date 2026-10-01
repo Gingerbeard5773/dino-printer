@@ -39,7 +39,6 @@ import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.state.property.Properties;
 import net.minecraft.state.property.Property;
 import net.minecraft.util.Hand;
@@ -65,6 +64,7 @@ public class BlockPrint {
     public BlockPos blockPos;
     public final BlockState required;
     public final BlockState existing;
+    public BlockState simulated;
     public final BlockHitResult hit;
     public final boolean fluid;
     private final boolean rotatable;
@@ -126,7 +126,7 @@ public class BlockPrint {
         if (!(stack.getItem() instanceof BlockItem blockItem)) return null;
 
         boolean sneaking = printer.sneakPlace.get() || mc.player.isSneaking();
-        ItemPlacementContext context = new PrinterPlaceContext(mc.player, yaw, pitch, sneaking, Hand.MAIN_HAND, stack, blockHit);
+        PrinterPlaceContext context = new PrinterPlaceContext(mc.player, yaw, pitch, sneaking, Hand.MAIN_HAND, stack, blockHit);
         if (!existing.canReplace(context)) return null;
 
         return blockItem.getPlacementState(context);
@@ -191,7 +191,7 @@ public class BlockPrint {
 
         float yaw = (float) Rotations.getYaw(blockHit.getPos());
         float pitch = (float) Rotations.getPitch(blockHit.getPos());
-        BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
+        simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
         if (simulated == null) return false;
 
         // Unequal blocks get booted. e.g standing signs vs wall signs
@@ -286,7 +286,7 @@ public class BlockPrint {
 
     // Check if the BlockHitResult has the correct rotation
     private boolean isMatchingDirection(float yaw, float pitch, BlockHitResult blockHit) {
-        BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
+        simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
         if (simulated == null) return false;
 
         // Check if our facing direction is the same

@@ -45,6 +45,7 @@ import net.minecraft.network.packet.s2c.play.InventoryS2CPacket;
 import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.Slot;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
@@ -723,6 +724,14 @@ public class DinoPrinter extends Module {
         // Otherwise do standard interaction
         } else if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockPrint.hit).isAccepted()) {
             swingHand();
+        }
+
+        // Use server authority if placing rotatables in singleplayer
+        if (mc.isInSingleplayer() && mc.getServer() != null && blockPrint.shouldRotatePlace() && blockPrint.simulated != null) {
+            ServerPlayerEntity player = mc.getServer().getPlayerManager().getPlayer(mc.player.getUuid());
+            if (player != null) {
+                player.getEntityWorld().setBlockState(blockPrint.blockPos, blockPrint.simulated);
+            }
         }
 
         if (autoSwitch.get() && swapBack.get()) InvUtils.swapBack();
