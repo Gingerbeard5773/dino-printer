@@ -695,8 +695,9 @@ public class DinoPrinter extends Module {
     }
 
     private boolean isPlayerMoving() {
+        // Grim requirements
         PlayerInput input = mc.player.input.playerInput;
-        return input.forward() || input.backward() || input.left() || input.right() || input.jump();
+        return input.forward() || input.backward() || input.left() || input.right() || input.jump() || mc.player.isSprinting();
     }
 
 
