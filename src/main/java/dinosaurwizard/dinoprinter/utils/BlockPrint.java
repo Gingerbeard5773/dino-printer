@@ -2,35 +2,14 @@
 /**
     BlockPrint
 
-    Dino Printer code is complex. Lets help you visualize what happens in the BlockPrint class below.
-    This is where the fundamentals of Dino Printer are.
+    This class deals with matching blockstates when placing blocks.
 
-         +---------------------+
-        /                     /|
-       /                     / |   Here we have a diagram of a block's face.
-      /                     /  |   Lets say dino printer wants to see if this is a good block to place onto-
-     /                     /   |   First it gets the shape of the adjacent block, then it creates a set of points that correspond with the shape's bounding boxes.
-    +---------------------+    |   Each point is tested to see if it passes all requirements.
-    |                     |    |   What are those requirements?
-    | X        X        X |    |   Raycasting: can we see the point from our player's eyes?
-    |                     |    |   Half block: if the block we want to place is a slab, should we place on the top or bottom of the adjacent block's face?
-    |                     |    |   Rotation: if we place at this point, will our block's orientation be correct?
-    | X        X        X |    +   Other states: other miscellaneous states may be tested to see if we are placing correctly.
-    |                     |   /
-    |                     |  /     When the point is passed as valid, this is the spot where the player's "placement" happens.
-    | X        X        X | /
-    |                     |/   X = an example of a point that the printer will check
-    +---------------------+
-
-    Dino Printer also supports airplace. When it does as such,
-       it does the same process explained above, but disregards adjacent blocks and insteads runs the point testing at its own block position using a custom box shape.
-
+    This is where most of the advanced functionality of dino printer is located.
 **/
 
 package dinosaurwizard.dinoprinter.utils;
 
 import dinosaurwizard.dinoprinter.modules.DinoPrinter;
-import dinosaurwizard.dinoprinter.utils.PrinterPlaceContext;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import net.minecraft.block.*;
 import net.minecraft.block.enums.ChestType;
@@ -43,25 +22,18 @@ import net.minecraft.state.property.Properties;
 import net.minecraft.state.property.Property;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.RaycastContext;
 
 import java.util.List;
-import java.util.LinkedHashSet;
 import java.util.Set;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class BlockPrint {
     private final DinoPrinter printer;
-    public BlockPos blockPos;
+    public final BlockPos blockPos;
     public final BlockState required;
     public final BlockState existing;
     public BlockState simulated;
@@ -81,6 +53,33 @@ public class BlockPrint {
         this.fluid = required.getBlock() instanceof FluidBlock;
         this.rotatable = isRotatable();
         this.hit = calculateBestPlaceHit();
+    }
+
+    // Determine if a location can be printed at
+    public static boolean isValid(BlockPos blockPos, BlockState required, BlockState existing, DinoPrinter printer) {
+        if (required.isAir()) return false;
+
+        boolean fluid = required.getBlock() instanceof FluidBlock;
+        if (fluid && (!required.getFluidState().isStill() || !printer.fluids.get())) return false;
+
+        if (!printer.incrementalStates.get() || !BlockPrint.isIncremental(required, existing)) {
+            // Spot must be air or some other replaceable block
+            if (!existing.isReplaceable()) return false;
+
+            // Spot is not already the required blockstate
+            if (required.getBlock() == existing.getBlock() && (!fluid || existing.getFluidState().isStill())) return false;
+
+            // Don't place in a position we already attempted
+            if (printer.cachedPositions.contains(blockPos)) return false;
+        }
+
+        // Check if legally placeable. For example, if its a torch, it can only be placed onto another block.
+        if (!required.canPlaceAt(mc.world, blockPos)) return false;
+
+        // No intersecting entities at our position
+        if (!mc.world.canPlace(required, blockPos, ShapeContext.absent())) return false;
+
+        return true;
     }
 
     public boolean canPlace() {
@@ -143,7 +142,7 @@ public class BlockPrint {
 
                 // Check spots on other blocks to place onto
                 if (!mc.world.getBlockState(adjacent).isReplaceable()) {
-                    Set<Vec3d> points = getShapeFacePoints(adjacent, opposite);
+                    Set<Vec3d> points = PrinterUtils.getShapeFacePoints(adjacent, opposite);
                     for (Vec3d point : points) {
                         if (!isPointValid(point, adjacent, opposite)) continue;
 
@@ -160,7 +159,7 @@ public class BlockPrint {
         // Only for air placement or if we have an incremental block
         if ((printer.airPlace.get() || incremental) && !fluid) {
             for (Direction direction : Direction.values()) {
-                Set<Vec3d> points = getShapeFacePoints(blockPos, direction);
+                Set<Vec3d> points = PrinterUtils.getShapeFacePoints(blockPos, direction);
                 for (Vec3d point : points) {
                     if (!isPointValid(point, blockPos, direction)) continue;
 
@@ -381,57 +380,11 @@ public class BlockPrint {
     }
 
     private boolean isPointValid(Vec3d point, BlockPos pos, Direction direction) {
-        // Place point must be within range
-        double range = printer.placeRange.get();
-        if (mc.player.getEyePos().squaredDistanceTo(point) > range * range) return false;
+        if (!PrinterUtils.isPointInRange(point, printer.placeRange.get())) return false;
 
-        // Must be visible if applicable
-        if ((!printer.wallPlace.get() || fluid) && !isPointVisible(point, pos, direction)) return false;
+        if ((!printer.wallPlace.get() || fluid) && !PrinterUtils.isPointVisible(point, pos, direction)) return false;
 
         return true;
-    }
-
-    // Determines if a player can see a point on a block's face
-    private boolean isPointVisible(Vec3d point, BlockPos pos, Direction direction) {
-        RaycastContext context = new RaycastContext(mc.player.getEyePos(), point, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player);
-        BlockHitResult ray = mc.world.raycast(context);
-
-        return ray.getType() == HitResult.Type.MISS || (ray.getBlockPos().equals(pos) && ray.getSide() == direction);
-    }
-
-    // AIR SHAPE is the shape that air-place utilizes. It is slightly smaller than a normal minecraft block.
-    private static final VoxelShape AIR_SHAPE = VoxelShapes.cuboid(0.01, 0.01, 0.01, 1.0 - 0.01, 1.0 - 0.01, 1.0 - 0.01);
-
-    private static final double[] samples = {0.1666666667, 0.5, 0.8333333333};
-
-    // Gets a list of points across a block shape's face
-    // This is dynamic, so blocks like stairs or hoppers have more faces/points
-    private Set<Vec3d> getShapeFacePoints(BlockPos pos, Direction face) {
-        Set<Vec3d> points = new LinkedHashSet<>();
-
-        BlockState state = mc.world.getBlockState(pos);
-        VoxelShape shape = state.isReplaceable() ? AIR_SHAPE : state.getOutlineShape(mc.world, pos);
-
-        for (Box box : shape.getBoundingBoxes()) {
-            double minX = box.minX + pos.getX(), minY = box.minY + pos.getY(), minZ = box.minZ + pos.getZ();
-            double maxX = box.maxX + pos.getX(), maxY = box.maxY + pos.getY(), maxZ = box.maxZ + pos.getZ();
-
-            // Samples are 'multiplied' against eachother, for a total of 9 points per block face (as shown on the diagram)
-            for (double u : samples) {
-                for (double v : samples) {
-                    switch (face) {
-                        case DOWN ->  points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), minY, MathHelper.lerp(v, minZ, maxZ)));
-                        case UP ->    points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), maxY, MathHelper.lerp(v, minZ, maxZ)));
-                        case NORTH -> points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), MathHelper.lerp(v, minY, maxY), minZ));
-                        case SOUTH -> points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), MathHelper.lerp(v, minY, maxY), maxZ));
-                        case WEST ->  points.add(new Vec3d(minX, MathHelper.lerp(u, minY, maxY), MathHelper.lerp(v, minZ, maxZ)));
-                        case EAST ->  points.add(new Vec3d(maxX, MathHelper.lerp(u, minY, maxY), MathHelper.lerp(v, minZ, maxZ)));
-                    }
-                }
-            }
-        }
-
-        return points;
     }
 
     // Yaws to simulate when placing blocks with the ROTATION property. e.g signs, banners

@@ -7,6 +7,7 @@
 package dinosaurwizard.dinoprinter.modules;
 
 import dinosaurwizard.dinoprinter.utils.BlockPrint;
+import dinosaurwizard.dinoprinter.utils.BlockInteract;
 import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
@@ -34,13 +35,13 @@ import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.block.AbstractSignBlock;
 import net.minecraft.block.BlockState;
-import net.minecraft.block.FluidBlock;
 import net.minecraft.block.ShapeContext;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
+import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.InventoryS2CPacket;
 import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
 import net.minecraft.screen.ScreenHandler;
@@ -195,6 +196,13 @@ public class DinoPrinter extends Module {
         .build()
     );
 
+    private final Setting<Boolean> interact = sgAdvanced.add(new BoolSetting.Builder()
+        .name("interact")
+        .description("Auto interact with blocks to match their state to the schematic. Useful for noteblocks, redstone components, trapdoors, etc.")
+        .defaultValue(false)
+        .build()
+    );
+
     // Inventory
 
     private final Setting<Boolean> autoSwitch = sgInventory.add(new BoolSetting.Builder()
@@ -325,7 +333,9 @@ public class DinoPrinter extends Module {
     private int pendingHotbarSlot = -1;
     private long lastSignPlaceTime = 0;
     public final Set<BlockPos> cachedPositions = new ObjectOpenHashSet<>();
+    private final List<BlockInteract> cachedInteracts = new ArrayList<>();
     private final List<BlockPrint> blockPrints = new ArrayList<>();
+    private final List<BlockInteract> blockInteracts = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
     private final List<ItemStack> mainInventory = new ArrayList<>(SlotUtils.MAIN_END + 1);
     private final List<PrintSlot> printSlots = createPrintSlots();
@@ -359,7 +369,9 @@ public class DinoPrinter extends Module {
         pendingHotbarSlot = -1;
         lastSignPlaceTime = 0;
         cachedPositions.clear();
+        cachedInteracts.clear();
         blockPrints.clear();
+        blockInteracts.clear();
         placedFades.clear();
         mainInventory.clear();
 
@@ -382,6 +394,11 @@ public class DinoPrinter extends Module {
             slot.lockTimer = Math.min(slotLockTicks.get(), slot.lockTimer + 1);
             slot.syncTimer = Math.min(antiOverrideTicks.get(), slot.syncTimer + 1);
         }
+
+        // Remove stale cached interacts
+        cachedInteracts.removeIf(blockInteract -> {
+            return blockInteract.timer++ > 20;
+        });
 
         // Rendering must be active
         if (!Configs.Visuals.ENABLE_RENDERING.getBooleanValue()) return;
@@ -416,17 +433,31 @@ public class DinoPrinter extends Module {
                     BlockState required = worldSchematic.getBlockState(blockPos);
                     BlockState existing = mc.world.getBlockState(blockPos);
 
-                    if (!isValid(blockPos, required, existing)) continue;
+                    // Only rendered schematic blocks can be placed
+                    if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) continue;
 
-                    BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required, existing, this);
-                    if (!blockPrint.canPlace()) continue;
+                    // Must be within world boundaries
+                    if (!World.isValid(blockPos)) continue;
 
-                    blockPrints.add(blockPrint);
+                    if (BlockPrint.isValid(blockPos, required, existing, this)) {
+                        BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required, existing, this);
+                        if (blockPrint.canPlace()) {
+                            blockPrints.add(blockPrint);
+                        }
+                        continue;
+                    }
+
+                    if (interact.get() && BlockInteract.isValid(required, existing)) {
+                        BlockInteract blockInteract = new BlockInteract(new BlockPos(blockPos), this);
+                        if (!cachedInteracts.contains(blockInteract) && blockInteract.canInteract()) {
+                            blockInteracts.add(blockInteract);
+                        }
+                    }
                 }
             }
         }
 
-        if (blockPrints.isEmpty()) return;
+        if (blockPrints.isEmpty() && blockInteracts.isEmpty()) return;
 
         // Sort blocks
         sortBlockPrints();
@@ -439,9 +470,9 @@ public class DinoPrinter extends Module {
         }
 
         // Place blocks!
-        int placedCount = 0;
+        int count = 0;
         for (BlockPrint blockPrint : blockPrints) {
-            if (placedCount >= blocksPerTick.get()) break;
+            if (count >= blocksPerTick.get()) break;
 
             Item item = blockPrint.asItem();
             int inventorySlot = getItemSlot(item);
@@ -470,6 +501,7 @@ public class DinoPrinter extends Module {
                     pendingInventorySlot = inventorySlot;
                     pendingHotbarSlot = hotbarSlot;
                     blockPrints.clear();
+                    blockInteracts.clear();
                     return;
                 }
 
@@ -488,10 +520,21 @@ public class DinoPrinter extends Module {
             place(blockPrint, inventorySlot, hotbarSlot);
 
             cachedPositions.add(blockPrint.blockPos);
-            placedCount++;
+            count++;
+        }
+
+        // Interact!
+        for (BlockInteract blockInteract : blockInteracts) {
+            if (count >= blocksPerTick.get()) break;
+
+            interact(blockInteract);
+
+            cachedInteracts.add(blockInteract);
+            count++;
         }
 
         blockPrints.clear();
+        blockInteracts.clear();
         placeTimer = 0;
     }
 
@@ -512,39 +555,6 @@ public class DinoPrinter extends Module {
         if (System.currentTimeMillis() - lastSignPlaceTime > 500) return;
 
         event.setCancelled(true);
-    }
-
-    // Determine if a location can be printed at
-    private boolean isValid(BlockPos blockPos, BlockState required, BlockState existing) {
-        if (required.isAir()) return false;
-
-        boolean fluid = required.getBlock() instanceof FluidBlock;
-        if (fluid && (!required.getFluidState().isStill() || !fluids.get())) return false;
-
-        if (!incrementalStates.get() || !BlockPrint.isIncremental(required, existing)) {
-            // Spot must be air or some other replaceable block
-            if (!existing.isReplaceable()) return false;
-
-            // Spot is not already the required blockstate
-            if (required.getBlock() == existing.getBlock() && (!fluid || existing.getFluidState().isStill())) return false;
-
-            // Don't place in a position we already attempted
-            if (cachedPositions.contains(blockPos)) return false;
-        }
-
-        // Only rendered schematic blocks can be placed
-        if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) return false;
-
-        // Must be within world boundaries
-        if (!World.isValid(blockPos)) return false;
-
-        // Check if legally placeable. For example, if its a torch, it can only be placed onto another block.
-        if (!required.canPlaceAt(mc.world, blockPos)) return false;
-
-        // No intersecting entities at our position
-        if (!mc.world.canPlace(required, blockPos, ShapeContext.absent())) return false;
-
-        return true;
     }
 
     private boolean shouldPause() {
@@ -627,6 +637,11 @@ public class DinoPrinter extends Module {
                     contents.set(slot, mc.player.getInventory().getStack(printSlot.slot).copy());
                 }
             }
+        // Remove cached interact if the server confirmed an update
+        } else if (event.packet instanceof BlockUpdateS2CPacket packet) {
+            cachedInteracts.removeIf(blockInteract -> {
+                return blockInteract.blockPos.equals(packet.getPos());
+            });
         }
     }
 
@@ -745,6 +760,39 @@ public class DinoPrinter extends Module {
 
         if (render.get()) {
             placedFades.add(new PlacedFade((float) fadeTime.get(), blockPrint.blockPos));
+        }
+    }
+
+    private void interact(BlockInteract blockInteract) {
+        if (rotate.get()) {
+            Rotations.rotate(Rotations.getYaw(blockInteract.hit.getPos()), Rotations.getPitch(blockInteract.hit.getPos()), () -> {
+                interactBlock(blockInteract);
+            });
+        } else {
+            interactBlock(blockInteract);
+        }
+    }
+
+    private void interactBlock(BlockInteract blockInteract) {
+        // Send our inputs with sneaking removed
+        boolean isSneaking = mc.player.isSneaking();
+        PlayerInput old = mc.player.input.playerInput;
+        if (isSneaking) {
+            PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), false, old.sprint());
+            mc.player.input.playerInput = sneak;
+            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(sneak));
+            mc.player.setSneaking(false);
+        }
+
+        if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockInteract.hit).isAccepted()) {
+            swingHand();
+        }
+
+        // Go back to our old inputs
+        if (isSneaking) {
+            mc.player.input.playerInput = old;
+            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(old));
+            mc.player.setSneaking(isSneaking);
         }
     }
 
