@@ -43,6 +43,7 @@ public class BlockPrint {
     private float placeYaw;
     private float placePitch;
     private boolean useRotation = false;
+    public boolean sneaking;
 
     public BlockPrint(BlockPos blockPos, BlockState required, BlockState existing, DinoPrinter printer) {
         this.printer = printer;
@@ -124,7 +125,6 @@ public class BlockPrint {
         ItemStack stack = asItem().getDefaultStack();
         if (!(stack.getItem() instanceof BlockItem blockItem)) return null;
 
-        boolean sneaking = printer.sneakPlace.get() || mc.player.isSneaking();
         PrinterPlaceContext context = new PrinterPlaceContext(mc.player, yaw, pitch, sneaking, Hand.MAIN_HAND, stack, blockHit);
         if (!existing.canReplace(context)) return null;
 
@@ -176,11 +176,21 @@ public class BlockPrint {
     }
 
     private boolean isMatchingRequirements(BlockHitResult placeHit) {
+        sneaking = printer.sneakPlace.get();
+
         if (required.getBlock().getStateManager().getProperties().isEmpty() || fluid) return true;
 
-        if (!isMatchingProperties(placeHit)) return false;
-        if (!isMatchingRotation(placeHit)) return false;
-        return true;
+        if (printer.sneakPlace.get() || mc.player.isSneaking()) {
+            sneaking = true;
+            if (isMatchingProperties(placeHit) && isMatchingRotation(placeHit)) return true;
+        }
+
+        if (!mc.player.isSneaking()) {
+            sneaking = false;
+            if (isMatchingProperties(placeHit) && isMatchingRotation(placeHit)) return true;
+        }
+
+        return false;
     }
 
     // Check if the BlockHitResult has the same properties

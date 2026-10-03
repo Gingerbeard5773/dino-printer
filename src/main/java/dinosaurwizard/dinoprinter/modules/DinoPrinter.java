@@ -733,7 +733,7 @@ public class DinoPrinter extends Module {
         // Send our inputs with sneaking injected
         boolean isSneaking = mc.player.isSneaking();
         PlayerInput old = mc.player.input.playerInput;
-        if (sneakPlace.get() && !isSneaking) {
+        if (blockPrint.sneaking && !isSneaking) {
             PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
             mc.player.input.playerInput = sneak;
             mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(sneak));
@@ -768,7 +768,7 @@ public class DinoPrinter extends Module {
         if (autoSwitch.get() && swapBack.get()) InvUtils.swapBack();
 
         // Go back to our old inputs
-        if (sneakPlace.get() && !isSneaking) {
+        if (blockPrint.sneaking && !isSneaking) {
             mc.player.input.playerInput = old;
             mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(old));
             mc.player.setSneaking(isSneaking);
