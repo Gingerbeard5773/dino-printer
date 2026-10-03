@@ -35,7 +35,6 @@ import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.block.AbstractSignBlock;
 import net.minecraft.block.BlockState;
-import net.minecraft.block.ShapeContext;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -319,11 +318,27 @@ public class DinoPrinter extends Module {
         .build()
     );
 
-    private final Setting<SettingColor> color = sgRender.add(new ColorSetting.Builder()
-        .name("color")
-        .description("The color to render the placement as.")
-        .defaultValue(new SettingColor(177, 236, 248, 100))
+    private final Setting<ShapeMode> shapeMode = sgRender.add(new EnumSetting.Builder<ShapeMode>()
+        .name("shape-mode")
+        .description("How the shapes are rendered.")
+        .defaultValue(ShapeMode.Both)
         .visible(render::get)
+        .build()
+    );
+
+    private final Setting<SettingColor> sideColor = sgRender.add(new ColorSetting.Builder()
+        .name("side-color")
+        .description("The side color to render the placement as.")
+        .defaultValue(new SettingColor(177, 236, 248, 100))
+        .visible(() -> render.get() && shapeMode.get().sides())
+        .build()
+    );
+
+    private final Setting<SettingColor> lineColor = sgRender.add(new ColorSetting.Builder()
+        .name("line-color")
+        .description("The line color to render the placement as.")
+        .defaultValue(new SettingColor(230, 250, 255))
+        .visible(() -> render.get() && shapeMode.get().lines())
         .build()
     );
 
@@ -820,10 +835,10 @@ public class DinoPrinter extends Module {
             fade.ticks -= event.tickDelta;
             if (fade.ticks <= 0) return true;
 
-            Color fadedColor = new Color(color.get());
-            int alpha = (int) ((fade.ticks / fadeTime.get()) * color.get().a);
-            fadedColor.a(alpha);
-            event.renderer.box(fade.pos, fadedColor, null, ShapeMode.Sides, 0);
+            double fadeMultiplier = fade.ticks / fadeTime.get();
+            Color fadedSide = new Color(sideColor.get()).a((int) (fadeMultiplier * sideColor.get().a));
+            Color fadedLine = new Color(lineColor.get()).a((int) (fadeMultiplier * lineColor.get().a));
+            event.renderer.box(fade.pos, fadedSide, fadedLine, shapeMode.get(), 0);
             return false;
         });
     }
