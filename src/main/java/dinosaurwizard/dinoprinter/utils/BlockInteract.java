@@ -76,6 +76,16 @@ public class BlockInteract {
         return hit != null;
     }
 
+    // Yaw when interacting
+    public double getYaw() {
+        return RotationManager.getYaw(hit.getPos());
+    }
+
+    // Pitch when interacting
+    public double getPitch() {
+        return RotationManager.getPitch(hit.getPos());
+    }
+
     // Gives a valid hit
     private BlockHitResult calculateBestInteractHit() {
         for (Direction direction : Direction.values()) {

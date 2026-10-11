@@ -8,15 +8,16 @@ package dinosaurwizard.dinoprinter.modules;
 
 import dinosaurwizard.dinoprinter.utils.BlockPrint;
 import dinosaurwizard.dinoprinter.utils.BlockInteract;
+import dinosaurwizard.dinoprinter.utils.RotationManager;
 import fi.dy.masa.litematica.config.Configs;
 import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import meteordevelopment.meteorclient.MeteorClient;
-import meteordevelopment.meteorclient.events.entity.player.SendMovementPacketsEvent;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
@@ -26,7 +27,6 @@ import meteordevelopment.meteorclient.systems.modules.combat.KillAura;
 import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
 import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
-import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.meteorclient.utils.render.color.Color;
@@ -395,9 +395,8 @@ public class DinoPrinter extends Module {
         }
     }
 
-    // onSendMovementPacketsPre is used instead of onTick for max synchronization with player rotations
-    @EventHandler(priority = EventPriority.HIGH)
-    private void onSendMovementPacketsPre(SendMovementPacketsEvent.Pre event) {
+    @EventHandler(priority = EventPriority.LOW)
+    public void onTickPre(TickEvent.Pre event) {
         WorldSchematic worldSchematic = SchematicWorldHandler.getSchematicWorld();
         if (worldSchematic == null) {
             toggle();
@@ -414,6 +413,12 @@ public class DinoPrinter extends Module {
         cachedInteracts.removeIf(blockInteract -> {
             return blockInteract.timer++ > 20;
         });
+
+        if (pendingInventorySlot != -1 && pendingHotbarSlot != -1) {
+            InvUtils.quickSwap().fromId(pendingHotbarSlot).to(pendingInventorySlot);
+            pendingInventorySlot = -1;
+            pendingHotbarSlot = -1;
+        }
 
         // Rendering must be active
         if (!Configs.Visuals.ENABLE_RENDERING.getBooleanValue()) return;
@@ -551,16 +556,6 @@ public class DinoPrinter extends Module {
         blockPrints.clear();
         blockInteracts.clear();
         placeTimer = 0;
-    }
-
-    // Post rotations
-    @EventHandler(priority = EventPriority.LOW)
-    private void onSendMovementPacketsPost(SendMovementPacketsEvent.Post event) {
-        if (pendingInventorySlot != -1 && pendingHotbarSlot != -1) {
-            InvUtils.quickSwap().fromId(pendingHotbarSlot).to(pendingInventorySlot);
-            pendingInventorySlot = -1;
-            pendingHotbarSlot = -1;
-        }
     }
 
     @EventHandler
@@ -721,7 +716,7 @@ public class DinoPrinter extends Module {
     // Custom placement that is far better than meteor's standard
     private void place(BlockPrint blockPrint, int inventorySlot, int hotbarSlot) {
         if (rotate.get() || blockPrint.shouldRotatePlace()) {
-            Rotations.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
+            RotationManager.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
                 interactPlace(blockPrint, inventorySlot, hotbarSlot);
             });
         } else {
@@ -757,14 +752,6 @@ public class DinoPrinter extends Module {
             swingHand();
         }
 
-        // Use server authority if placing rotatables in singleplayer
-        if (mc.isInSingleplayer() && mc.getServer() != null && blockPrint.shouldRotatePlace() && blockPrint.simulated != null) {
-            ServerPlayerEntity player = mc.getServer().getPlayerManager().getPlayer(mc.player.getUuid());
-            if (player != null) {
-                player.getEntityWorld().setBlockState(blockPrint.blockPos, blockPrint.simulated);
-            }
-        }
-
         if (autoSwitch.get() && swapBack.get()) InvUtils.swapBack();
 
         // Go back to our old inputs
@@ -781,7 +768,7 @@ public class DinoPrinter extends Module {
 
     private void interact(BlockInteract blockInteract) {
         if (rotate.get()) {
-            Rotations.rotate(Rotations.getYaw(blockInteract.hit.getPos()), Rotations.getPitch(blockInteract.hit.getPos()), () -> {
+            RotationManager.rotate(blockInteract.getYaw(), blockInteract.getPitch(), () -> {
                 interactBlock(blockInteract);
             });
         } else {

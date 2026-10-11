@@ -10,7 +10,6 @@
 package dinosaurwizard.dinoprinter.utils;
 
 import dinosaurwizard.dinoprinter.modules.DinoPrinter;
-import meteordevelopment.meteorclient.utils.player.Rotations;
 import net.minecraft.block.*;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.block.enums.SlabType;
@@ -36,7 +35,6 @@ public class BlockPrint {
     public final BlockPos blockPos;
     public final BlockState required;
     public final BlockState existing;
-    public BlockState simulated;
     public final BlockHitResult hit;
     public final boolean fluid;
     private final boolean rotatable;
@@ -108,14 +106,14 @@ public class BlockPrint {
     public double getYaw() {
         if (useRotation) return placeYaw;
 
-        return Rotations.getYaw(hit.getPos());
+        return RotationManager.getYaw(hit.getPos());
     }
 
     // Pitch when placing the block
     public double getPitch() {
         if (useRotation) return placePitch;
 
-        return Rotations.getPitch(hit.getPos());
+        return RotationManager.getPitch(hit.getPos());
     }
 
     // Gets a simulated place state using customizable inputs.
@@ -200,9 +198,9 @@ public class BlockPrint {
         // Ignore property matching for blocks:
         if (block instanceof TripwireBlock || block instanceof TripwireHookBlock) return true;
 
-        float yaw = (float) Rotations.getYaw(blockHit.getPos());
-        float pitch = (float) Rotations.getPitch(blockHit.getPos());
-        simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
+        float yaw = (float) RotationManager.getYaw(blockHit.getPos());
+        float pitch = (float) RotationManager.getPitch(blockHit.getPos());
+        BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
         if (simulated == null) return false;
 
         // Unequal blocks get booted. e.g standing signs vs wall signs
@@ -297,7 +295,7 @@ public class BlockPrint {
 
     // Check if the BlockHitResult has the correct rotation
     private boolean isMatchingDirection(float yaw, float pitch, BlockHitResult blockHit) {
-        simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
+        BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
         if (simulated == null) return false;
 
         // Check if our facing direction is the same
@@ -326,8 +324,8 @@ public class BlockPrint {
     private boolean isMatchingRotation(BlockHitResult blockHit) {
         if (!printer.rotationPlace.get() || !rotatable) return true;
 
-        float legitYaw = (float) Rotations.getYaw(blockHit.getPos());
-        float legitPitch = (float) Rotations.getPitch(blockHit.getPos());
+        float legitYaw = (float) RotationManager.getYaw(blockHit.getPos());
+        float legitPitch = (float) RotationManager.getPitch(blockHit.getPos());
 
         // Hack rotation calculation
         if (!printer.strictRotation.get()) {
