@@ -36,7 +36,10 @@ import meteordevelopment.orbit.EventPriority;
 import net.minecraft.block.AbstractSignBlock;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
+import net.minecraft.item.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
@@ -674,20 +677,33 @@ public class DinoPrinter extends Module {
     private int getSwapSlot() {
         // First look for an empty slot in our inventory to use
         for (int i = 0; i < 9; i++) {
-            // Slots we are moving items into are locked and cannot be used temporarily
             if (isSlotLocked(i)) continue;
 
-            if (mainInventory.get(i).isEmpty()) {
-                return i;
-            }
+            if (mainInventory.get(i).isEmpty()) return i;
         }
+        // Otherwise swap with an item thats not valuable
+        for (int i = 0; i < 9; ++i) {
+            int j = (mc.player.getInventory().getSelectedSlot() + i) % 9;
+            if (isSlotLocked(j)) continue;
 
-        // Otherwise just use our selected slot
-        int selected = mc.player.getInventory().getSelectedSlot();
-        if (!isSlotLocked(selected)) {
-            return selected;
+            if (isSwappable(mainInventory.get(j))) return j;
         }
         return -1;
+    }
+
+    // Determine if an item can swap out of the hotbar
+    private boolean isSwappable(ItemStack stack) {
+        Item item = stack.getItem();
+        if (item instanceof BlockItem) return true;
+
+        if (stack.hasEnchantments()) return false;
+
+        if (item == Items.EXPERIENCE_BOTTLE || item == Items.TOTEM_OF_UNDYING) return false;
+
+        if (item.getComponents().get(DataComponentTypes.FOOD) != null) {
+            return item == Items.ROTTEN_FLESH || item == Items.SPIDER_EYE;
+        }
+        return true;
     }
 
     private boolean isSlotLocked(int slot) {
