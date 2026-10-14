@@ -387,6 +387,10 @@ public class BlockPrint {
         return false;
     }
 
+    public boolean isPointValid() {
+        return isPointValid(hit.getPos(), hit.getBlockPos(), hit.getSide());
+    }
+
     private boolean isPointValid(Vec3d point, BlockPos pos, Direction direction) {
         if (!PrinterUtils.isPointInRange(point, printer.placeRange.get())) return false;
 

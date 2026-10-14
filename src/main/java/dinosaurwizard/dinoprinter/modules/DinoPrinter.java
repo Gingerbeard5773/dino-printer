@@ -733,7 +733,9 @@ public class DinoPrinter extends Module {
     private void place(BlockPrint blockPrint, int inventorySlot, int hotbarSlot) {
         if (rotate.get() || blockPrint.shouldRotatePlace()) {
             RotationManager.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
-                interactPlace(blockPrint, inventorySlot, hotbarSlot);
+                if (blockPrint.isPointValid()) {
+                    interactPlace(blockPrint, inventorySlot, hotbarSlot);
+                }
             });
         } else {
             interactPlace(blockPrint, inventorySlot, hotbarSlot);
@@ -785,7 +787,9 @@ public class DinoPrinter extends Module {
     private void interact(BlockInteract blockInteract) {
         if (rotate.get()) {
             RotationManager.rotate(blockInteract.getYaw(), blockInteract.getPitch(), () -> {
-                interactBlock(blockInteract);
+                if (blockInteract.isPointValid()) {
+                    interactBlock(blockInteract);
+                }
             });
         } else {
             interactBlock(blockInteract);

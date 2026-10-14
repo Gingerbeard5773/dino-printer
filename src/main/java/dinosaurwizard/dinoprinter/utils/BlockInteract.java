@@ -91,9 +91,7 @@ public class BlockInteract {
         for (Direction direction : Direction.values()) {
             Set<Vec3d> points = PrinterUtils.getShapeFacePoints(blockPos, direction);
             for (Vec3d point : points) {
-                if (!PrinterUtils.isPointInRange(point, printer.placeRange.get())) continue;
-
-                if (!printer.wallPlace.get() && !PrinterUtils.isPointVisible(point, blockPos, direction)) continue;
+                if (!isPointValid(point, blockPos, direction)) continue;
 
                 BlockHitResult interactHit = new BlockHitResult(point, direction, blockPos, false);
                 return interactHit;
@@ -102,6 +100,18 @@ public class BlockInteract {
 
         // We failed to find any good spot to interact with the block
         return null;
+    }
+
+    public boolean isPointValid() {
+        return isPointValid(hit.getPos(), hit.getBlockPos(), hit.getSide());
+    }
+
+    private boolean isPointValid(Vec3d point, BlockPos pos, Direction direction) {
+        if (!PrinterUtils.isPointInRange(point, printer.placeRange.get())) return false;
+
+        if (!printer.wallPlace.get() && !PrinterUtils.isPointVisible(point, blockPos, direction)) return false;
+
+        return true;
     }
 
     @Override
