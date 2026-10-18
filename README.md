@@ -32,10 +32,12 @@ This makes the system highly flexible and allows it to work with **nearly all Mi
 
 # Features
 
-* **Advanced BlockState Matching** — Simulates placement to ensure every block matches the schematic's required state.
-* **Superior Raytracing** — Searches for multiple points across block surfaces instead of relying on a single point. This allows for reliable placement on servers that require raytracing.
-* **Hack Rotation** — Allows rotatable blocks to be placed in their correct orientation from anywhere. Works on most servers!
-* **Anti-Cheat Support** — Flexible placement settings let you adapt to your server's restrictions.
+* **BlockState Matching** — Simulates placement to ensure every block matches the schematic's wanted state.
+* **Interaction Capability** — Automatically interacts with blocks to match them to the schematic- great for trapdoors and redstone components.
+* **Superior Raytracing** — Searches for multiple points across block surfaces instead of using the block's center. This allows for reliable placement on servers that require raytracing.
+* **Rotation Placer** — Allows rotatable blocks to be placed in their correct orientation from anywhere.
+* **Fluid Placement** — Lava and water are supported and can be placed using buckets.
+* **Anti-Cheat Support** — Flexible settings let you adapt to your server's restrictions. Dino Printer is especially optimized for Grim and NCP.
 
 # Installation
 - Download the relevant [release](/../../releases) of the mod from the releases tab.
@@ -63,12 +65,15 @@ Here is an in-depth explanation of each relevant setting and how you should use 
 | **Air Place** | Allows blocks to be placed without using another block-face. | This is a hack so some servers may disallow/limit it. |
 | **Sneak Place** | Sends sneaking packets when placing blocks. | Use this if you are placing against interactable blocks like furnaces or chests. |
 | **Rotate** | Rotates toward blocks before placing them. | Required for servers that dislike it when you don't rotate towards your placements. |
-| **Rotation Place** | Respects block rotation when placing. | This hack lets you rotate blocks from any direction. **NOTE: IT DOESNT WORK FULLY IN SINGLEPLAYER** |
+| **Rotate Legit Move** | Respects player movement inputs while rotating. | This adjusts your player movement inputs when you are rotating to make them 'legit'. Only turn on if necessary.  |
+| **Rotation Place** | Respects block rotation when placing. | This lets you rotate blocks when facing from any direction. |
 | **Strict Rotation** | Only allows rotation placements that could be performed legitimately. | Use this if your server doesn't allow the Rotation-Place hack. |
 | **Half Blocks** | Respects block half properties. | Required to properly place slabs, stairs, and trapdoors. |
 | **Incremental States** | Respects states that require multiple placements. | Required to properly place double-slabs, candles, sea pickles, vines, snow layers etc. |
 | **Misc States** | Respects miscellaneous block states. | Required to properly place doors, beds, lanterns, and other unique blocks. |
+| **Fluids** | Allow placement of fluids using buckets. | Keep in mind that bucket placement uses raycasting by default. |
 | **Exit Signs** | Automatically exits sign-edit screens. | This cancels the sign-edit screen when placing signs. Note: This breaks the auto-sign-text feature from litematica. |
+| **Interact** | Automatically interact with blocks to match their state to the schematic. | Useful for noteblocks, trapdoors, redstone components. This uses placement settings like Place Delay & Place Range. |
 | **Auto Switch** | Automatically switches to placeable blocks in the hotbar. | Disable if you need precision with which blocks you want to place. |
 | **Swap Back** | Returns to the previous hotbar slot after placing. | Some servers dislike it when the player swaps between slots multiple times in a tick. Disable if necessary. |
 | **Allow Inventory** | Allows blocks to be moved from inside the inventory into the hotbar. | — |
@@ -82,10 +87,28 @@ Here is an in-depth explanation of each relevant setting and how you should use 
 * Here are some configs for certain servers. They cannot be guaranteed to be up to date, and adjustments may be necessary.
 
 <details>
+<summary>2b2t (Grim)</summary>
+
+```text
+I don't have prio. Put up an issue with a well tuned config and it will be placed here :)
+```
+
+</details>
+
+<details>
 <summary>Constantiam (Grim)</summary>
 
 ```text
-H4sIAAAAAAAA/32OawrCMBCEJz6bKniSHKOIx1ibpQTjJiRptbdXC1VQ8N/APL6pgQoroStjb50EE5OTwqlGlbkUJ13W2HQp9DHXABYKh8xtcUGaeySxbNU8sD2ycCKvP92pssR6IN/zU79hu+ipZWPZ0wg1B2ZXk0tmSgB/gPokA0sJafxCqt/FfKNoztReXi8eOQ5enPYAAAA=
+H4sIAAAAAAAA/0WNbQrCMBBEJ1prGwVP0mOI51iapQTiJmy2orf3A2L/Dbx5Mx4Y0AndGecQJU9Foxirx1DZLMpSR/SL5rVUD8A5XCrPFrNcn4UkcHBt4HhjYaU0bu5X2e1xeFBa+ZP/Z6eSaOYpcKIXXCs02ms2sp/wBk2OqvqhAAAA
+```
+
+</details>
+
+<details>
+<summary>9b9t (Grim)</summary>
+
+```text
+H4sIAAAAAAAA/2XNQQrCMBCF4RfR2gTBk/QY4jmGZigDcRImU/H46sJ24frxvT8BI45KD8Yli9apmaizJYyd3UWXHjEsVtfWE4AQcO08u1S9vRpp5hx+B+c7KxuVuNsvOQScnlRW3kqRxKZWaGb8bYNVJ+ePwxsmhcXPnAAAAA==
 ```
 
 </details>
@@ -94,7 +117,7 @@ H4sIAAAAAAAA/32OawrCMBCEJz6bKniSHKOIx1ibpQTjJiRptbdXC1VQ8N/APL6pgQoroStjb50EE5OT
 <summary>Oldfrog (NCP)</summary>
 
 ```text
-H4sIAAAAAAAA/32Q3QrCMAyFM+fPNgWfpA/hhYiPEdsgZTUtbba5t9cJ22SCd4Gc852cVAAFrBkfBAdj2asQLQvFCopEIpbvqYTtPfompAoA8gyOibRYz+dnQDZkshGwuxBTRFfO3sGyymHTomvoPU9h++BQkzLksIdsFIzbqkPn1EcC8CexOJkWWZNZRGYjcVIek0SrRUUvOKD+Yssrt8TiY7+s8nNpmToM6oa6hq+amznWeVHO61qJ1XUaXvACbU7e3HMBAAA=
+H4sIAAAAAAAA/32QbwrCMAzFM/y3TUE8SO+gH0Q8RmzDKNa0tNnUo+hp3cRNUDSfAnnv9x4pAXIYM54IFsayVyFaFool5IlELFepgGkVfR1SCQCjDJaJtFjP20tANmSyHjDbEVNEV7y9nWU8gkmDrqZ2H8LmwaEmZcjhFaYvwXp16+b+IYrIFUHWU/preUbn1FPyfVxFLyikHFVW1Mk3bfqf6vnGNMiazEf3rAcPymWSaLWoJ79F/cUWe26IxcfrL+5QuEhnDOqA+ti96QG+1tE7lwEAAA==
 ```
 
 </details>
@@ -103,7 +126,7 @@ H4sIAAAAAAAA/32Q3QrCMAyFM+fPNgWfpA/hhYiPEdsgZTUtbba5t9cJ22SCd4Gc852cVAAFrBkfBAdj
 
 | Question | Answer |
 | :--- | :--- |
-| **What is Dino Printer capable of placing?** | Stairs, slabs, rotatable blocks such as observers, hoppers, and pistons, as well as double slabs, snow layers, signs, banners, vines, and more. **Essentially everything**, with a few exceptions. |
-| **Can I use Dino Printer to bypass cheat detection?** | **No.** Dino Printer is designed for servers such as 2b2t and Constantiam. It does **not** bypass cheat detection systems such as Watchdog. Dino Printer simply tries to comply with servers that have strict placement requirements. **I do not recommend using Dino Printer on servers where using cheats can result in a ban.** |
+| **What is Dino Printer capable of placing?** | Stairs, slabs, rotatable blocks such as observers, hoppers, and pistons, as well as double slabs, snow layers, signs, banners, vines, fluids and more. **Essentially everything**, with a few exceptions. |
+| **Can I use Dino Printer to bypass cheat detection?** | **No.** Dino Printer is designed for servers that allow hacks. It does **not** bypass cheat detection systems such as Watchdog. Dino Printer simply tries to comply with servers that have strict placement requirements. **I do not recommend using Dino Printer on servers where using cheats can result in a ban.** |
 | **Can I use Dino Printer to build map art?** | **Absolutely.** Due to Dino Printer's unique placement, "Mapart Mode" is **Built-in** by default. It is excellent for placing carpets on oceans, or building staircased maps. |
 | **Does Dino Printer offer any automation?** | **No.** Dino Printer is a general purpose printer. At minimum, Dino Printer can be paired with [baritone](https://github.com/cabaletta/baritone)'s own schematic builder to offer some level of automation. |

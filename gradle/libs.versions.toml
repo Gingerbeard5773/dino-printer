@@ -1,5 +1,5 @@
 [versions]
-mod-version = "1.2.0"
+mod-version = "1.3.0"
 
 # Fabric (https://fabricmc.net/develop)
 minecraft = "1.21.4"
@@ -7,12 +7,11 @@ yarn-mappings = "1.21.4+build.8"
 fabric-loader = "0.16.9"
 
 # Loom (https://github.com/FabricMC/fabric-loom)
-loom = "1.14-SNAPSHOT"
+loom = "1.17-SNAPSHOT"
 
 # Meteor (https://github.com/MeteorDevelopment/meteor-client/)
 meteor = "1.21.4-SNAPSHOT"
 
-# Mods
 litematica = "0.21.7"
 malilib = "0.23.5"
 
