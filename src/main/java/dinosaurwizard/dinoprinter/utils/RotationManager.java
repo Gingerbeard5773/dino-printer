@@ -2,26 +2,26 @@
     RotationManager
 
     Forked from base meteor but rewritten heavily.
-    It is designed for compliance with Grim anti-cheat.
+    It is designed for compliance with Grim anti-cheat primarily.
 
     Most notably, "move fix" is implemented so rotations dont cause rubberbanding while the player moves.
 **/
 
 package dinosaurwizard.dinoprinter.utils;
 
+import dinosaurwizard.dinoprinter.modules.DinoPrinter;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.SendMovementPacketsEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.systems.config.Config;
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.PreInit;
-import meteordevelopment.meteorclient.utils.entity.Target;
+import meteordevelopment.meteorclient.utils.PostInit;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.client.input.Input;
-import net.minecraft.entity.Entity;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec2f;
 import net.minecraft.util.math.Vec3d;
@@ -43,12 +43,19 @@ public class RotationManager {
 
     public static boolean rotating = false;
 
+    private static DinoPrinter printer;
+
     private RotationManager() {
     }
 
     @PreInit
     public static void init() {
         MeteorClient.EVENT_BUS.subscribe(RotationManager.class);
+    }
+
+    @PostInit
+    public static void initPost() {
+        printer = Modules.get().get(DinoPrinter.class);
     }
 
     public static void rotate(double yaw, double pitch, int priority, Runnable callback) {
@@ -124,6 +131,40 @@ public class RotationManager {
 
     @EventHandler(priority = EventPriority.LOWEST - 1000)
     private static void onTickQueue(TickEvent.Pre event) {
+        if (printer != null && printer.rotateLegitMove.get()) {
+            startRotations();
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOW)
+    private static void onSendMovementPacketsPre(SendMovementPacketsEvent.Pre event) {
+        if (printer != null && !printer.rotateLegitMove.get()) {
+            startRotations();
+        }
+
+        if (rotations.isEmpty()) return;
+
+        // The first rotation is sent within our normal movement packets
+        Rotation first = rotations.get(0);
+        setPrePlayerRotation();
+        setServerRotation(first.yaw, first.pitch);
+        setPlayerRotation(first.yaw, first.pitch);
+    }
+
+    @EventHandler(priority = EventPriority.LOW)
+    private static void onSendMovementPacketsPost(SendMovementPacketsEvent.Post event) {
+        if (rotations.isEmpty()) return;
+
+        if (Rotations.rotating) return; // Compatibility with base meteor
+
+        setPlayerRotation(preYaw, prePitch);
+    }
+
+    private static void startRotations() {
+        if (printer.isActive()) {
+            printer.onTickPreRotate();
+        }
+
         rotating = false;
 
         if (lastRotation != null) {
@@ -147,69 +188,18 @@ public class RotationManager {
         }
     }
 
-    @EventHandler(priority = EventPriority.LOW)
-    private static void onSendMovementPacketsPre(SendMovementPacketsEvent.Pre event) {
-        if (rotations.isEmpty()) return;
-
-        // The first rotation is sent within our normal movement packets
-        Rotation first = rotations.get(0);
-        setPrePlayerRotation();
-        setServerRotation(first.yaw, first.pitch);
-        setPlayerRotation(first.yaw, first.pitch);
-    }
-
-    @EventHandler(priority = EventPriority.LOW)
-    private static void onSendMovementPacketsPost(SendMovementPacketsEvent.Post event) {
-        if (rotations.isEmpty()) return;
-
-        if (Rotations.rotating) return; // Compatibility with base meteor
-
-        setPlayerRotation(preYaw, prePitch);
+    public static boolean shouldAlterMovementInputs() {
+        return printer != null && rotating && printer.rotateLegitMove.get();
     }
 
     public static double getYaw(Vec3d pos) {
         return mc.player.getYaw() + MathHelper.wrapDegrees((float) Math.toDegrees(Math.atan2(pos.getZ() - mc.player.getZ(), pos.getX() - mc.player.getX())) - 90f - mc.player.getYaw());
     }
 
-    public static double getYaw(Entity entity) {
-        return mc.player.getYaw() + MathHelper.wrapDegrees((float) Math.toDegrees(Math.atan2(entity.getZ() - mc.player.getZ(), entity.getX() - mc.player.getX())) - 90f - mc.player.getYaw());
-    }
-
-    public static double getYaw(BlockPos pos) {
-        return mc.player.getYaw() + MathHelper.wrapDegrees((float) Math.toDegrees(Math.atan2(pos.getZ() + 0.5 - mc.player.getZ(), pos.getX() + 0.5 - mc.player.getX())) - 90f - mc.player.getYaw());
-    }
-
     public static double getPitch(Vec3d pos) {
         double diffX = pos.getX() - mc.player.getX();
         double diffY = pos.getY() - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
         double diffZ = pos.getZ() - mc.player.getZ();
-        double diffXZ = Math.sqrt(diffX * diffX + diffZ * diffZ);
-
-        return mc.player.getPitch() + MathHelper.wrapDegrees((float) -Math.toDegrees(Math.atan2(diffY, diffXZ)) - mc.player.getPitch());
-    }
-
-    public static double getPitch(Entity entity, Target target) {
-        double y;
-        if (target == Target.Head) y = entity.getEyeY();
-        else if (target == Target.Body) y = entity.getY() + entity.getHeight() / 2;
-        else y = entity.getY();
-
-        double diffX = entity.getX() - mc.player.getX();
-        double diffY = y - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
-        double diffZ = entity.getZ() - mc.player.getZ();
-        double diffXZ = Math.sqrt(diffX * diffX + diffZ * diffZ);
-
-        return mc.player.getPitch() + MathHelper.wrapDegrees((float) -Math.toDegrees(Math.atan2(diffY, diffXZ)) - mc.player.getPitch());
-    }
-
-    public static double getPitch(Entity entity) {
-        return getPitch(entity, Target.Body);
-    }
-
-    public static double getPitch(BlockPos pos) {
-        double diffX = pos.getX() + 0.5 - mc.player.getX();
-        double diffY = pos.getY() + 0.5 - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
-        double diffZ = pos.getZ() + 0.5 - mc.player.getZ();
         double diffXZ = Math.sqrt(diffX * diffX + diffZ * diffZ);
 
         return mc.player.getPitch() + MathHelper.wrapDegrees((float) -Math.toDegrees(Math.atan2(diffY, diffXZ)) - mc.player.getPitch());

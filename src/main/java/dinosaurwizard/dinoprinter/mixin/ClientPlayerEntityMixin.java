@@ -22,7 +22,7 @@ public abstract class ClientPlayerEntityMixin extends AbstractClientPlayerEntity
     private void wrapTick(Input input, Operation<Void> original) {
         original.call(input);
 
-        if (RotationManager.rotating) {
+        if (RotationManager.shouldAlterMovementInputs()) {
             RotationManager.setRotationPlayerInput(input);
         }
     }

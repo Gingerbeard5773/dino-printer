@@ -131,6 +131,13 @@ public class DinoPrinter extends Module {
         .build()
     );
 
+    public final Setting<Boolean> rotateLegitMove = sgGeneral.add(new BoolSetting.Builder()
+        .name("rotate-legit-move")
+        .description("Respect movement inputs when rotating. Required for certain anti-cheats.")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Setting<SortAlgorithm> firstAlgorithm = sgGeneral.add(new EnumSetting.Builder<SortAlgorithm>()
         .name("first-sorting-mode")
         .description("The blocks you want to place first.")
@@ -142,7 +149,7 @@ public class DinoPrinter extends Module {
         .name("second-sorting-mode")
         .description("Second pass of sorting eg. place first blocks higher and closest to you.")
         .defaultValue(SortingSecond.None)
-        .visible(()-> firstAlgorithm.get().applySecondSorting)
+        .visible(() -> firstAlgorithm.get().applySecondSorting)
         .build()
     );
 
@@ -398,8 +405,7 @@ public class DinoPrinter extends Module {
         }
     }
 
-    @EventHandler(priority = EventPriority.LOW)
-    public void onTickPre(TickEvent.Pre event) {
+    public void onTickPreRotate() {
         WorldSchematic worldSchematic = SchematicWorldHandler.getSchematicWorld();
         if (worldSchematic == null) {
             toggle();

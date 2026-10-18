@@ -13,7 +13,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 public abstract class EntityMixin {
     @WrapOperation(method = "updateVelocity", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;getYaw()F"))
     public float updateVelocityYaw(Entity entity, Operation<Float> original) {
-        if ((Object) this == mc.player && RotationManager.rotating) {
+        if ((Object) this == mc.player && RotationManager.shouldAlterMovementInputs()) {
             return RotationManager.serverYaw;
         }
 
