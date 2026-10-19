@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "package": "dinosaurwizard.dinoprinter.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ClientPlayerEntityMixin",
+    "EntityMixin",
+    "PlayerEntityRendererMixin"
+  ],
+  "mixins": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
