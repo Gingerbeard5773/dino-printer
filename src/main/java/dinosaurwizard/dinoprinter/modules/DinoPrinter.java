@@ -7,13 +7,17 @@
 package dinosaurwizard.dinoprinter.modules;
 
 import dinosaurwizard.dinoprinter.utils.BlockPrint;
+import dinosaurwizard.dinoprinter.utils.BlockInteract;
+import dinosaurwizard.dinoprinter.utils.RotationManager;
+import fi.dy.masa.litematica.config.Configs;
+import fi.dy.masa.litematica.data.DataManager;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import meteordevelopment.meteorclient.MeteorClient;
-import meteordevelopment.meteorclient.events.entity.player.SendMovementPacketsEvent;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
@@ -23,7 +27,6 @@ import meteordevelopment.meteorclient.systems.modules.combat.KillAura;
 import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
 import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
-import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.meteorclient.utils.render.color.Color;
@@ -33,18 +36,24 @@ import meteordevelopment.orbit.EventPriority;
 import net.minecraft.block.AbstractSignBlock;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
+import net.minecraft.item.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
+import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.InventoryS2CPacket;
 import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.Slot;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.PlayerInput;
+import net.minecraft.world.World;
 
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.ArrayList;
@@ -62,7 +71,7 @@ public class DinoPrinter extends Module {
     private final Setting<Integer> placeDelay = sgGeneral.add(new IntSetting.Builder()
         .name("place-delay")
         .description("The tick delay between placing blocks.")
-        .defaultValue(1)
+        .defaultValue(0)
         .range(0, 10)
         .build()
     );
@@ -122,6 +131,13 @@ public class DinoPrinter extends Module {
         .build()
     );
 
+    public final Setting<Boolean> rotateLegitMove = sgGeneral.add(new BoolSetting.Builder()
+        .name("rotate-legit-move")
+        .description("Respect movement inputs when rotating. Required for certain anti-cheats.")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Setting<SortAlgorithm> firstAlgorithm = sgGeneral.add(new EnumSetting.Builder<SortAlgorithm>()
         .name("first-sorting-mode")
         .description("The blocks you want to place first.")
@@ -133,7 +149,7 @@ public class DinoPrinter extends Module {
         .name("second-sorting-mode")
         .description("Second pass of sorting eg. place first blocks higher and closest to you.")
         .defaultValue(SortingSecond.None)
-        .visible(()-> firstAlgorithm.get().applySecondSorting)
+        .visible(() -> firstAlgorithm.get().applySecondSorting)
         .build()
     );
 
@@ -175,10 +191,24 @@ public class DinoPrinter extends Module {
         .build()
     );
 
+    public final Setting<Boolean> fluids = sgAdvanced.add(new BoolSetting.Builder()
+        .name("fluids")
+        .description("Allow placement of fluids using their respective buckets.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final Setting<Boolean> exitSigns = sgAdvanced.add(new BoolSetting.Builder()
         .name("exit-signs")
         .description("Auto exit sign screens.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> interact = sgAdvanced.add(new BoolSetting.Builder()
+        .name("interact")
+        .description("Auto interact with blocks to match their state to the schematic. Useful for noteblocks, redstone components, trapdoors, etc.")
+        .defaultValue(false)
         .build()
     );
 
@@ -226,7 +256,7 @@ public class DinoPrinter extends Module {
     private final Setting<Integer> slotLockTicks = sgInventory.add(new IntSetting.Builder()
         .name("slot-lock-ticks")
         .description("The time in ticks to lock a slot that was used for swapping items.")
-        .defaultValue(0)
+        .defaultValue(5)
         .min(0)
         .sliderMax(20)
         .visible(() -> autoSwitch.get() && allowInventory.get())
@@ -236,7 +266,7 @@ public class DinoPrinter extends Module {
     private final Setting<Integer> antiOverrideTicks = sgInventory.add(new IntSetting.Builder()
         .name("anti-override-ticks")
         .description("The time in ticks to stop S2C sync packets overriding your inventory slots, for the purpose of stopping misplaces.")
-        .defaultValue(8)
+        .defaultValue(5)
         .min(0)
         .sliderMax(20)
         .build()
@@ -298,11 +328,27 @@ public class DinoPrinter extends Module {
         .build()
     );
 
-    private final Setting<SettingColor> color = sgRender.add(new ColorSetting.Builder()
-        .name("color")
-        .description("The color to render the placement as.")
-        .defaultValue(new SettingColor(177, 236, 248, 100))
+    private final Setting<ShapeMode> shapeMode = sgRender.add(new EnumSetting.Builder<ShapeMode>()
+        .name("shape-mode")
+        .description("How the shapes are rendered.")
+        .defaultValue(ShapeMode.Both)
         .visible(render::get)
+        .build()
+    );
+
+    private final Setting<SettingColor> sideColor = sgRender.add(new ColorSetting.Builder()
+        .name("side-color")
+        .description("The side color to render the placement as.")
+        .defaultValue(new SettingColor(177, 236, 248, 100))
+        .visible(() -> render.get() && shapeMode.get().sides())
+        .build()
+    );
+
+    private final Setting<SettingColor> lineColor = sgRender.add(new ColorSetting.Builder()
+        .name("line-color")
+        .description("The line color to render the placement as.")
+        .defaultValue(new SettingColor(230, 250, 255))
+        .visible(() -> render.get() && shapeMode.get().lines())
         .build()
     );
 
@@ -312,7 +358,9 @@ public class DinoPrinter extends Module {
     private int pendingHotbarSlot = -1;
     private long lastSignPlaceTime = 0;
     public final Set<BlockPos> cachedPositions = new ObjectOpenHashSet<>();
+    private final List<BlockInteract> cachedInteracts = new ArrayList<>();
     private final List<BlockPrint> blockPrints = new ArrayList<>();
+    private final List<BlockInteract> blockInteracts = new ArrayList<>();
     private final List<PlacedFade> placedFades = new ArrayList<>();
     private final List<ItemStack> mainInventory = new ArrayList<>(SlotUtils.MAIN_END + 1);
     private final List<PrintSlot> printSlots = createPrintSlots();
@@ -346,7 +394,9 @@ public class DinoPrinter extends Module {
         pendingHotbarSlot = -1;
         lastSignPlaceTime = 0;
         cachedPositions.clear();
+        cachedInteracts.clear();
         blockPrints.clear();
+        blockInteracts.clear();
         placedFades.clear();
         mainInventory.clear();
 
@@ -355,9 +405,7 @@ public class DinoPrinter extends Module {
         }
     }
 
-    // onSendMovementPacketsPre is used instead of onTick for max synchronization with player rotations
-    @EventHandler(priority = EventPriority.HIGH)
-    private void onSendMovementPacketsPre(SendMovementPacketsEvent.Pre event) {
+    public void onTickPreRotate() {
         WorldSchematic worldSchematic = SchematicWorldHandler.getSchematicWorld();
         if (worldSchematic == null) {
             toggle();
@@ -370,6 +418,22 @@ public class DinoPrinter extends Module {
             slot.syncTimer = Math.min(antiOverrideTicks.get(), slot.syncTimer + 1);
         }
 
+        // Remove stale cached interacts
+        cachedInteracts.removeIf(blockInteract -> {
+            return blockInteract.timer++ > 20;
+        });
+
+        if (pendingInventorySlot != -1 && pendingHotbarSlot != -1) {
+            InvUtils.quickSwap().fromId(pendingHotbarSlot).to(pendingInventorySlot);
+            pendingInventorySlot = -1;
+            pendingHotbarSlot = -1;
+        }
+
+        // Rendering must be active
+        if (!Configs.Visuals.ENABLE_RENDERING.getBooleanValue()) return;
+        if (!Configs.Visuals.ENABLE_SCHEMATIC_RENDERING.getBooleanValue()) return;
+
+        // Pause entire process if necessary
         if (shouldPause()) return;
 
         // Clear cached positions every so often
@@ -398,15 +462,31 @@ public class DinoPrinter extends Module {
                     BlockState required = worldSchematic.getBlockState(blockPos);
                     BlockState existing = mc.world.getBlockState(blockPos);
 
-                    BlockPrint blockPrint = new BlockPrint(blockPos, required, existing, this);
-                    if (!blockPrint.canPlace()) continue;
+                    // Only rendered schematic blocks can be placed
+                    if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) continue;
 
-                    blockPrints.add(blockPrint);
+                    // Must be within world boundaries
+                    if (!World.isValid(blockPos)) continue;
+
+                    if (BlockPrint.isValid(blockPos, required, existing, this)) {
+                        BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required, existing, this);
+                        if (blockPrint.canPlace()) {
+                            blockPrints.add(blockPrint);
+                        }
+                        continue;
+                    }
+
+                    if (interact.get() && BlockInteract.isValid(required, existing)) {
+                        BlockInteract blockInteract = new BlockInteract(new BlockPos(blockPos), this);
+                        if (!cachedInteracts.contains(blockInteract) && blockInteract.canInteract()) {
+                            blockInteracts.add(blockInteract);
+                        }
+                    }
                 }
             }
         }
 
-        if (blockPrints.isEmpty()) return;
+        if (blockPrints.isEmpty() && blockInteracts.isEmpty()) return;
 
         // Sort blocks
         sortBlockPrints();
@@ -419,11 +499,11 @@ public class DinoPrinter extends Module {
         }
 
         // Place blocks!
-        int placedCount = 0;
+        int count = 0;
         for (BlockPrint blockPrint : blockPrints) {
-            if (placedCount >= blocksPerTick.get()) break;
+            if (count >= blocksPerTick.get()) break;
 
-            Item item = blockPrint.required.getBlock().asItem();
+            Item item = blockPrint.asItem();
             int inventorySlot = getItemSlot(item);
             if (inventorySlot == -1) continue;
 
@@ -450,6 +530,7 @@ public class DinoPrinter extends Module {
                     pendingInventorySlot = inventorySlot;
                     pendingHotbarSlot = hotbarSlot;
                     blockPrints.clear();
+                    blockInteracts.clear();
                     return;
                 }
 
@@ -468,21 +549,22 @@ public class DinoPrinter extends Module {
             place(blockPrint, inventorySlot, hotbarSlot);
 
             cachedPositions.add(blockPrint.blockPos);
-            placedCount++;
+            count++;
+        }
+
+        // Interact!
+        for (BlockInteract blockInteract : blockInteracts) {
+            if (count >= blocksPerTick.get()) break;
+
+            interact(blockInteract);
+
+            cachedInteracts.add(blockInteract);
+            count++;
         }
 
         blockPrints.clear();
+        blockInteracts.clear();
         placeTimer = 0;
-    }
-
-    // Post rotations
-    @EventHandler(priority = EventPriority.LOW)
-    private void onSendMovementPacketsPost(SendMovementPacketsEvent.Post event) {
-        if (pendingInventorySlot != -1 && pendingHotbarSlot != -1) {
-            InvUtils.quickSwap().fromId(pendingHotbarSlot).to(pendingInventorySlot);
-            pendingInventorySlot = -1;
-            pendingHotbarSlot = -1;
-        }
     }
 
     @EventHandler
@@ -574,6 +656,11 @@ public class DinoPrinter extends Module {
                     contents.set(slot, mc.player.getInventory().getStack(printSlot.slot).copy());
                 }
             }
+        // Remove cached interact if the server confirmed an update
+        } else if (event.packet instanceof BlockUpdateS2CPacket packet) {
+            cachedInteracts.removeIf(blockInteract -> {
+                return blockInteract.blockPos.equals(packet.getPos());
+            });
         }
     }
 
@@ -596,20 +683,33 @@ public class DinoPrinter extends Module {
     private int getSwapSlot() {
         // First look for an empty slot in our inventory to use
         for (int i = 0; i < 9; i++) {
-            // Slots we are moving items into are locked and cannot be used temporarily
             if (isSlotLocked(i)) continue;
 
-            if (mainInventory.get(i).isEmpty()) {
-                return i;
-            }
+            if (mainInventory.get(i).isEmpty()) return i;
         }
+        // Otherwise swap with an item thats not valuable
+        for (int i = 0; i < 9; ++i) {
+            int j = (mc.player.getInventory().getSelectedSlot() + i) % 9;
+            if (isSlotLocked(j)) continue;
 
-        // Otherwise just use our selected slot
-        int selected = mc.player.getInventory().getSelectedSlot();
-        if (!isSlotLocked(selected)) {
-            return selected;
+            if (isSwappable(mainInventory.get(j))) return j;
         }
         return -1;
+    }
+
+    // Determine if an item can swap out of the hotbar
+    private boolean isSwappable(ItemStack stack) {
+        Item item = stack.getItem();
+        if (item instanceof BlockItem) return true;
+
+        if (stack.hasEnchantments()) return false;
+
+        if (item == Items.EXPERIENCE_BOTTLE || item == Items.TOTEM_OF_UNDYING) return false;
+
+        if (item.getComponents().get(DataComponentTypes.FOOD) != null) {
+            return item == Items.ROTTEN_FLESH || item == Items.SPIDER_EYE;
+        }
+        return true;
     }
 
     private boolean isSlotLocked(int slot) {
@@ -621,9 +721,15 @@ public class DinoPrinter extends Module {
     private boolean canInventoryMove() {
         if (!autoSwitch.get() || !allowInventory.get()) return false;
 
-        if (stationaryMove.get() && mc.player.getVelocity().multiply(1, 0, 1).length() > 0.00001) return false;
+        if (stationaryMove.get() && isPlayerMoving()) return false;
 
         return true;
+    }
+
+    private boolean isPlayerMoving() {
+        // Grim requirements
+        PlayerInput input = mc.player.input.playerInput;
+        return input.forward() || input.backward() || input.left() || input.right() || input.jump() || mc.player.isSprinting() || mc.player.isSneaking();
     }
 
 
@@ -632,8 +738,10 @@ public class DinoPrinter extends Module {
     // Custom placement that is far better than meteor's standard
     private void place(BlockPrint blockPrint, int inventorySlot, int hotbarSlot) {
         if (rotate.get() || blockPrint.shouldRotatePlace()) {
-            Rotations.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
-                interactPlace(blockPrint, inventorySlot, hotbarSlot);
+            RotationManager.rotate(blockPrint.getYaw(), blockPrint.getPitch(), () -> {
+                if (blockPrint.isPointValid()) {
+                    interactPlace(blockPrint, inventorySlot, hotbarSlot);
+                }
             });
         } else {
             interactPlace(blockPrint, inventorySlot, hotbarSlot);
@@ -644,8 +752,9 @@ public class DinoPrinter extends Module {
         // Send our inputs with sneaking injected
         boolean isSneaking = mc.player.isSneaking();
         PlayerInput old = mc.player.input.playerInput;
-        if (sneakPlace.get() && !isSneaking) {
-            mc.player.input.playerInput = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
+        if (blockPrint.sneaking && !isSneaking) {
+            PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
+            mc.player.input.playerInput = sneak;
             mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.PRESS_SHIFT_KEY));
             mc.player.setSneaking(true);
         }
@@ -658,14 +767,19 @@ public class DinoPrinter extends Module {
             InvUtils.swap(hotbarSlot, swapBack.get());
         }
 
-        if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockPrint.hit).isAccepted()) {
-            if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
-            else mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+        // Buckets have their own unique logic
+        if (blockPrint.fluid) {
+            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            swingHand();
+        // Otherwise do standard interaction
+        } else if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockPrint.hit).isAccepted()) {
+            swingHand();
         }
 
         if (autoSwitch.get() && swapBack.get()) InvUtils.swapBack();
 
-        if (sneakPlace.get() && !isSneaking) {
+        // Go back to our old inputs
+        if (blockPrint.sneaking && !isSneaking) {
             mc.player.input.playerInput = old;
             mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.RELEASE_SHIFT_KEY));
             mc.player.setSneaking(isSneaking);
@@ -676,6 +790,45 @@ public class DinoPrinter extends Module {
         }
     }
 
+    private void interact(BlockInteract blockInteract) {
+        if (rotate.get()) {
+            RotationManager.rotate(blockInteract.getYaw(), blockInteract.getPitch(), () -> {
+                if (blockInteract.isPointValid()) {
+                    interactBlock(blockInteract);
+                }
+            });
+        } else {
+            interactBlock(blockInteract);
+        }
+    }
+
+    private void interactBlock(BlockInteract blockInteract) {
+        // Send our inputs with sneaking removed
+        boolean isSneaking = mc.player.isSneaking();
+        PlayerInput old = mc.player.input.playerInput;
+        if (isSneaking) {
+            PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), false, old.sprint());
+            mc.player.input.playerInput = sneak;
+            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.RELEASE_SHIFT_KEY));
+            mc.player.setSneaking(false);
+        }
+
+        if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockInteract.hit).isAccepted()) {
+            swingHand();
+        }
+
+        // Go back to our old inputs
+        if (isSneaking) {
+            mc.player.input.playerInput = old;
+            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.PRESS_SHIFT_KEY));
+            mc.player.setSneaking(isSneaking);
+        }
+    }
+
+    private void swingHand() {
+        if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
+        else mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+    }
 
     /// Rendering
 
@@ -695,10 +848,10 @@ public class DinoPrinter extends Module {
             fade.ticks -= event.tickDelta;
             if (fade.ticks <= 0) return true;
 
-            Color fadedColor = new Color(color.get());
-            int alpha = (int) ((fade.ticks / fadeTime.get()) * color.get().a);
-            fadedColor.a(alpha);
-            event.renderer.box(fade.pos, fadedColor, null, ShapeMode.Sides, 0);
+            double fadeMultiplier = fade.ticks / fadeTime.get();
+            Color fadedSide = new Color(sideColor.get()).a((int) (fadeMultiplier * sideColor.get().a));
+            Color fadedLine = new Color(lineColor.get()).a((int) (fadeMultiplier * lineColor.get().a));
+            event.renderer.box(fade.pos, fadedSide, fadedLine, shapeMode.get(), 0);
             return false;
         });
     }
@@ -757,8 +910,8 @@ public class DinoPrinter extends Module {
     }
 
     private static final Comparator<BlockPrint> hotbarAlgorithm = (a, b) -> {
-        Item itemA = a.required.getBlock().asItem();
-        Item itemB = b.required.getBlock().asItem();
+        Item itemA = a.asItem();
+        Item itemB = b.asItem();
         boolean aInHotbar = InvUtils.findInHotbar(itemStack -> itemA == itemStack.getItem()).found();
         boolean bInHotbar = InvUtils.findInHotbar(itemStack -> itemB == itemStack.getItem()).found();
 
