@@ -218,7 +218,8 @@ public class RotationManager {
 
         int x = (input.playerInput.left() ? 1 : 0) - (input.playerInput.right() ? 1 : 0);
         int y = (input.playerInput.forward() ? 1 : 0) - (input.playerInput.backward() ? 1 : 0);
-        input.movementVector = new Vec2f(x, y).normalize();
+        input.movementSideways = x;
+        input.movementForward = y;
     }
 
     private static PlayerInput getInputFromRelativeYaw(PlayerInput input) {
