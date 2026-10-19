@@ -16,7 +16,7 @@
   "entrypoints": {
     "meteor": ["dinosaurwizard.dinoprinter.DinoPrinterAddon"]
   },
-  "mixins": [],
+  "mixins": ["dinoprinter.mixins.json"],
   "custom": {
     "meteor-client:color": "28,255,239",
     "modmenu": {
