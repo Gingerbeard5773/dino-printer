@@ -52,6 +52,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -903,7 +904,7 @@ public class DinoPrinter extends Module {
     private static double distanceToPlayer(BlockPos pos) {
         if (MeteorClient.mc.player == null) return 0;
 
-        return MeteorClient.mc.player.position().distanceToSqr(pos.getCenter());
+        return MeteorClient.mc.player.position().distanceToSqr(Vec3.atCenterOf(pos));
     }
 
     private static final Comparator<BlockPrint> hotbarAlgorithm = (a, b) -> {

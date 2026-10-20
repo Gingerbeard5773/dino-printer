@@ -2,12 +2,19 @@ plugins {
     alias(libs.plugins.fabric.loom)
 }
 
-base {
-    archivesName = properties["archives_base_name"] as String
-}
+val archivesBaseName = providers.gradleProperty("archives_base_name").get()
+val mavenGroup = providers.gradleProperty("maven_group").get()
 
 version = "${libs.versions.mod.version.get()}+mc${libs.versions.minecraft.get()}"
-group = properties["maven_group"] as String
+
+base {
+    archivesName = providers.gradleProperty("archives_base_name").get()
+    group = providers.gradleProperty("maven_group").get()
+}
+
+loom {
+    accessWidenerPath = file("src/main/resources/dinoprinter.classtweaker")
+}
 
 repositories {
     maven {
@@ -48,16 +55,24 @@ java {
 }
 
 fun toMinecraftCompat(version: String): String {
-    val match = Regex("""^(\d{2})\.([1-9]\d*)(?:\.([1-9]\d*))?$""")
-        .matchEntire(version)
-        ?: error("Invalid Minecraft version format: $version. Expected YY.D or YY.D.H")
+    val stable = Regex("""^(\d{2})\.([1-9]\d*)(?:\.(\d+))?$""")
 
-    val (year, drop, _) = match.destructured
-    return "~$year.$drop"
-}
+    stable.matchEntire(version)?.let {
+        val (year, drop, _) = it.destructured
+        return "~$year.$drop"
+    }
 
-loom {
-    accessWidenerPath = file("src/main/resources/dinoprinter.classtweaker")
+    val pre = Regex("""^(\d{2})\.([1-9]\d*)-pre[-.](\d+)$""")
+    pre.matchEntire(version)?.let {
+        return version.replace("-pre-", "-pre.")
+    }
+
+    val rc = Regex("""^(\d{2})\.([1-9]\d*)-rc[-.](\d+)$""")
+    rc.matchEntire(version)?.let {
+        return version.replace("-rc-", "-rc.")
+    }
+
+    return version
 }
 
 tasks {
@@ -75,10 +90,10 @@ tasks {
     }
 
     jar {
-        inputs.property("archivesName", project.base.archivesName.get())
+        inputs.property("archivesName", archivesBaseName)
 
         from("LICENSE") {
-            rename { "${it}_${inputs.properties["archivesName"]}" }
+            rename { "${it}_$archivesBaseName" }
         }
     }
 
