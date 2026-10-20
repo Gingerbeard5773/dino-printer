@@ -17,6 +17,7 @@ import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.item.ItemStack;
+import net.minecraft.screen.NamedScreenHandlerFactory;
 import net.minecraft.state.property.Properties;
 import net.minecraft.state.property.Property;
 import net.minecraft.util.Hand;
@@ -171,8 +172,6 @@ public class BlockPrint {
     private boolean isMatchingRequirements(BlockHitResult placeHit) {
         sneaking = printer.sneakPlace.get();
 
-        if (required.getBlock().getStateManager().getProperties().isEmpty() || fluid) return true;
-
         if (printer.sneakPlace.get() || mc.player.isSneaking()) {
             sneaking = true;
             if (isMatchingProperties(placeHit) && isMatchingRotation(placeHit)) return true;
@@ -191,7 +190,12 @@ public class BlockPrint {
         Block block = required.getBlock();
 
         // Ignore property matching for blocks:
-        if (block instanceof TripwireBlock || block instanceof TripwireHookBlock) return true;
+        if (block instanceof TripwireBlock || block instanceof TripwireHookBlock || fluid) return true;
+
+        // Never allow interactions to go through
+        if (!sneaking && isInteractable(blockHit.getBlockPos())) return false;
+
+        if (required.getBlock().getStateManager().getProperties().isEmpty()) return true;
 
         float yaw = (float) RotationManager.getYaw(blockHit.getPos());
         float pitch = (float) RotationManager.getPitch(blockHit.getPos());
@@ -392,6 +396,31 @@ public class BlockPrint {
         if ((!printer.wallPlace.get() || fluid) && !PrinterUtils.isPointVisible(point, pos, direction)) return false;
 
         return true;
+    }
+
+    // Determines if the block consumes an interaction. Not perfect
+    private static boolean isInteractable(BlockPos blockPos) {
+        // Blocks that have screens
+        if (mc.world.getBlockEntity(blockPos) instanceof NamedScreenHandlerFactory) return true;
+        
+        BlockState state = mc.world.getBlockState(blockPos);
+        // Blocks with screen-handler factories (e.g. crafting tables)
+        if (state.createScreenHandlerFactory(mc.world, blockPos) != null) return true;
+
+        Block block = state.getBlock();
+        return block instanceof DoorBlock
+            || block instanceof TrapdoorBlock
+            || block instanceof FenceGateBlock
+            || block instanceof ButtonBlock
+            || block instanceof LeverBlock
+            || block instanceof RepeaterBlock
+            || block instanceof ComparatorBlock
+            || block instanceof DaylightDetectorBlock
+            || block instanceof NoteBlock
+            || block instanceof BellBlock
+            || block instanceof BedBlock
+            || block instanceof DragonEggBlock 
+            || block instanceof LecternBlock;
     }
 
     // Yaws to simulate when placing blocks with the ROTATION property. e.g signs, banners
