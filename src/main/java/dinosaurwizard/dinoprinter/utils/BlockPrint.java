@@ -61,7 +61,7 @@ public class BlockPrint {
         boolean fluid = required.getBlock() instanceof FluidBlock;
         if (fluid && (!required.getFluidState().isStill() || !printer.fluids.get())) return false;
 
-        if (!printer.incrementalStates.get() || !BlockPrint.isIncremental(required, existing)) {
+        if (!printer.incrementalStates.get() || !isIncremental(required, existing)) {
             // Spot must be air or some other replaceable block
             if (!existing.isReplaceable()) return false;
 
@@ -131,30 +131,25 @@ public class BlockPrint {
 
     // Gives the best possible hit result using relevant requirements
     private BlockHitResult calculateBestPlaceHit() {
-        boolean incremental = printer.incrementalStates.get() && required.getBlock() == existing.getBlock();
+        for (Direction direction : Direction.values()) {
+            BlockPos adjacent = blockPos.offset(direction);
+            if (mc.world.getBlockState(adjacent).isReplaceable()) continue;
 
-        if (!incremental || fluid) {
-            for (Direction direction : Direction.values()) {
-                BlockPos adjacent = blockPos.offset(direction);
-                Direction opposite = direction.getOpposite();
+            Direction opposite = direction.getOpposite();
+            Set<Vec3d> points = PrinterUtils.getShapeFacePoints(adjacent, opposite);
+            for (Vec3d point : points) {
+                if (!isPointValid(point, adjacent, opposite)) continue;
 
-                // Check spots on other blocks to place onto
-                if (!mc.world.getBlockState(adjacent).isReplaceable()) {
-                    Set<Vec3d> points = PrinterUtils.getShapeFacePoints(adjacent, opposite);
-                    for (Vec3d point : points) {
-                        if (!isPointValid(point, adjacent, opposite)) continue;
+                BlockHitResult placeHit = new BlockHitResult(point, opposite, adjacent, false);
+                if (!isMatchingRequirements(placeHit)) continue;
 
-                        BlockHitResult placeHit = new BlockHitResult(point, opposite, adjacent, false);
-                        if (!isMatchingRequirements(placeHit)) continue;
-
-                        return placeHit;
-                    }
-                }
+                return placeHit;
             }
         }
 
         // If we couldn't find an adjacent block to place onto, check points on our own block position
         // Only for air placement or if we have an incremental block
+        boolean incremental = printer.incrementalStates.get() && required.getBlock() == existing.getBlock();
         if ((printer.airPlace.get() || incremental) && !fluid) {
             for (Direction direction : Direction.values()) {
                 Set<Vec3d> points = PrinterUtils.getShapeFacePoints(blockPos, direction);
