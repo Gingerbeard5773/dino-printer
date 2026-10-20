@@ -23,12 +23,12 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.MenuProvider;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import java.util.List;
 import java.util.Set;
-import net.minecraft.screen.NamedScreenHandlerFactory;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
@@ -134,8 +134,8 @@ public class BlockPrint {
     // Gives the best possible hit result using relevant requirements
     private BlockHitResult calculateBestPlaceHit() {
         for (Direction direction : Direction.values()) {
-            BlockPos adjacent = blockPos.offset(direction);
-            if (mc.world.getBlockState(adjacent).isReplaceable()) continue;
+            BlockPos adjacent = blockPos.relative(direction);
+            if (mc.level.getBlockState(adjacent).canBeReplaced()) continue;
 
             Direction opposite = direction.getOpposite();
             Set<Vec3> points = PrinterUtils.getShapeFacePoints(adjacent, opposite);
@@ -191,12 +191,12 @@ public class BlockPrint {
         Block block = required.getBlock();
 
         // Ignore property matching for blocks:
-        if (block instanceof TripwireBlock || block instanceof TripwireHookBlock || fluid) return true;
+        if (block instanceof TripWireBlock || block instanceof TripWireHookBlock || fluid) return true;
 
         // Never allow interactions to go through
         if (!sneaking && isInteractable(blockHit.getBlockPos())) return false;
 
-        if (required.getBlock().getStateManager().getProperties().isEmpty()) return true;
+        if (required.getBlock().getStateDefinition().getProperties().isEmpty()) return true;
 
         float yaw = (float) RotationManager.getYaw(blockHit.getLocation());
         float pitch = (float) RotationManager.getPitch(blockHit.getLocation());
@@ -402,15 +402,15 @@ public class BlockPrint {
     // Determines if the block consumes an interaction. Not perfect
     private static boolean isInteractable(BlockPos blockPos) {
         // Blocks that have screens
-        if (mc.world.getBlockEntity(blockPos) instanceof NamedScreenHandlerFactory) return true;
-        
-        BlockState state = mc.world.getBlockState(blockPos);
+        if (mc.level.getBlockEntity(blockPos) instanceof MenuProvider) return true;
+
+        BlockState state = mc.level.getBlockState(blockPos);
         // Blocks with screen-handler factories (e.g. crafting tables)
-        if (state.createScreenHandlerFactory(mc.world, blockPos) != null) return true;
+        if (state.getMenuProvider(mc.level, blockPos) != null) return true;
 
         Block block = state.getBlock();
         return block instanceof DoorBlock
-            || block instanceof TrapdoorBlock
+            || block instanceof TrapDoorBlock
             || block instanceof FenceGateBlock
             || block instanceof ButtonBlock
             || block instanceof LeverBlock
