@@ -17,15 +17,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.ChestBlock;
-import net.minecraft.world.level.block.FlowerPotBlock;
-import net.minecraft.world.level.block.LiquidBlock;
-import net.minecraft.world.level.block.MultifaceSpreadeableBlock;
-import net.minecraft.world.level.block.TripWireBlock;
-import net.minecraft.world.level.block.TripWireHookBlock;
-import net.minecraft.world.level.block.VineBlock;
+import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.ChestType;
@@ -36,6 +28,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import java.util.List;
 import java.util.Set;
+import net.minecraft.screen.NamedScreenHandlerFactory;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
@@ -70,7 +63,7 @@ public class BlockPrint {
         boolean fluid = required.getBlock() instanceof LiquidBlock;
         if (fluid && (!required.getFluidState().isSource() || !printer.fluids.get())) return false;
 
-        if (!printer.incrementalStates.get() || !BlockPrint.isIncremental(required, existing)) {
+        if (!printer.incrementalStates.get() || !isIncremental(required, existing)) {
             // Spot must be air or some other replaceable block
             if (!existing.canBeReplaced()) return false;
 
@@ -140,30 +133,25 @@ public class BlockPrint {
 
     // Gives the best possible hit result using relevant requirements
     private BlockHitResult calculateBestPlaceHit() {
-        boolean incremental = printer.incrementalStates.get() && required.getBlock() == existing.getBlock();
+        for (Direction direction : Direction.values()) {
+            BlockPos adjacent = blockPos.offset(direction);
+            if (mc.world.getBlockState(adjacent).isReplaceable()) continue;
 
-        if (!incremental || fluid) {
-            for (Direction direction : Direction.values()) {
-                BlockPos adjacent = blockPos.relative(direction);
-                Direction opposite = direction.getOpposite();
+            Direction opposite = direction.getOpposite();
+            Set<Vec3> points = PrinterUtils.getShapeFacePoints(adjacent, opposite);
+            for (Vec3 point : points) {
+                if (!isPointValid(point, adjacent, opposite)) continue;
 
-                // Check spots on other blocks to place onto
-                if (!mc.level.getBlockState(adjacent).canBeReplaced()) {
-                    Set<Vec3> points = PrinterUtils.getShapeFacePoints(adjacent, opposite);
-                    for (Vec3 point : points) {
-                        if (!isPointValid(point, adjacent, opposite)) continue;
+                BlockHitResult placeHit = new BlockHitResult(point, opposite, adjacent, false);
+                if (!isMatchingRequirements(placeHit)) continue;
 
-                        BlockHitResult placeHit = new BlockHitResult(point, opposite, adjacent, false);
-                        if (!isMatchingRequirements(placeHit)) continue;
-
-                        return placeHit;
-                    }
-                }
+                return placeHit;
             }
         }
 
         // If we couldn't find an adjacent block to place onto, check points on our own block position
         // Only for air placement or if we have an incremental block
+        boolean incremental = printer.incrementalStates.get() && required.getBlock() == existing.getBlock();
         if ((printer.airPlace.get() || incremental) && !fluid) {
             for (Direction direction : Direction.values()) {
                 Set<Vec3> points = PrinterUtils.getShapeFacePoints(blockPos, direction);
@@ -185,8 +173,6 @@ public class BlockPrint {
     private boolean isMatchingRequirements(BlockHitResult placeHit) {
         sneaking = printer.sneakPlace.get();
 
-        if (required.getBlock().getStateDefinition().getProperties().isEmpty() || fluid) return true;
-
         if (printer.sneakPlace.get() || mc.player.isShiftKeyDown()) {
             sneaking = true;
             if (isMatchingProperties(placeHit) && isMatchingRotation(placeHit)) return true;
@@ -205,7 +191,12 @@ public class BlockPrint {
         Block block = required.getBlock();
 
         // Ignore property matching for blocks:
-        if (block instanceof TripWireBlock || block instanceof TripWireHookBlock) return true;
+        if (block instanceof TripwireBlock || block instanceof TripwireHookBlock || fluid) return true;
+
+        // Never allow interactions to go through
+        if (!sneaking && isInteractable(blockHit.getBlockPos())) return false;
+
+        if (required.getBlock().getStateManager().getProperties().isEmpty()) return true;
 
         float yaw = (float) RotationManager.getYaw(blockHit.getLocation());
         float pitch = (float) RotationManager.getPitch(blockHit.getLocation());
@@ -406,6 +397,31 @@ public class BlockPrint {
         if ((!printer.wallPlace.get() || fluid) && !PrinterUtils.isPointVisible(point, pos, direction)) return false;
 
         return true;
+    }
+
+    // Determines if the block consumes an interaction. Not perfect
+    private static boolean isInteractable(BlockPos blockPos) {
+        // Blocks that have screens
+        if (mc.world.getBlockEntity(blockPos) instanceof NamedScreenHandlerFactory) return true;
+        
+        BlockState state = mc.world.getBlockState(blockPos);
+        // Blocks with screen-handler factories (e.g. crafting tables)
+        if (state.createScreenHandlerFactory(mc.world, blockPos) != null) return true;
+
+        Block block = state.getBlock();
+        return block instanceof DoorBlock
+            || block instanceof TrapdoorBlock
+            || block instanceof FenceGateBlock
+            || block instanceof ButtonBlock
+            || block instanceof LeverBlock
+            || block instanceof RepeaterBlock
+            || block instanceof ComparatorBlock
+            || block instanceof DaylightDetectorBlock
+            || block instanceof NoteBlock
+            || block instanceof BellBlock
+            || block instanceof BedBlock
+            || block instanceof DragonEggBlock 
+            || block instanceof LecternBlock;
     }
 
     // Yaws to simulate when placing blocks with the ROTATION property. e.g signs, banners
