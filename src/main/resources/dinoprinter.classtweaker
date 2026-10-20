@@ -1,6 +1,6 @@
-accessWidener v1 named
+accessWidener v2 official
 
-accessible method net/minecraft/item/BlockItem getPlacementState (Lnet/minecraft/item/ItemPlacementContext;)Lnet/minecraft/block/BlockState;
-accessible method net/minecraft/block/RedstoneWireBlock isFullyConnected (Lnet/minecraft/block/BlockState;)Z
-accessible method net/minecraft/block/RedstoneWireBlock isNotConnected (Lnet/minecraft/block/BlockState;)Z
-accessible field net/minecraft/client/input/Input movementVector Lnet/minecraft/util/math/Vec2f;
+accessible method net/minecraft/world/item/BlockItem getPlacementState (Lnet/minecraft/world/item/context/BlockPlaceContext;)Lnet/minecraft/world/level/block/state/BlockState;
+accessible method net/minecraft/world/level/block/RedStoneWireBlock isCross (Lnet/minecraft/world/level/block/state/BlockState;)Z
+accessible method net/minecraft/world/level/block/RedStoneWireBlock isDot (Lnet/minecraft/world/level/block/state/BlockState;)Z
+accessible field net/minecraft/client/player/ClientInput moveVector Lnet/minecraft/world/phys/Vec2;

@@ -7,18 +7,17 @@
 
 package dinosaurwizard.dinoprinter.utils;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.RaycastContext;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -27,7 +26,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 public class PrinterUtils {
 
     // AIR SHAPE is the shape that air-place utilizes. It is slightly smaller than a normal minecraft block.
-    private static final VoxelShape AIR_SHAPE = VoxelShapes.cuboid(0.01, 0.01, 0.01, 1.0 - 0.01, 1.0 - 0.01, 1.0 - 0.01);
+    private static final VoxelShape AIR_SHAPE = Shapes.box(0.01, 0.01, 0.01, 1.0 - 0.01, 1.0 - 0.01, 1.0 - 0.01);
 
     private static final double[] samples = {0.1666666667, 0.5, 0.8333333333};
 
@@ -35,16 +34,16 @@ public class PrinterUtils {
     }
 
     // Determines if a player is close enough to a point on a block's face
-    public static boolean isPointInRange(Vec3d point, double range) {
-        return mc.player.getEyePos().squaredDistanceTo(point) < range * range;
+    public static boolean isPointInRange(Vec3 point, double range) {
+        return mc.player.getEyePosition().distanceToSqr(point) < range * range;
     }
 
     // Determines if a player can see a point on a block's face
-    public static boolean isPointVisible(Vec3d point, BlockPos blockPos, Direction direction) {
-        RaycastContext context = new RaycastContext(mc.player.getEyePos(), point, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player);
-        BlockHitResult ray = mc.world.raycast(context);
+    public static boolean isPointVisible(Vec3 point, BlockPos blockPos, Direction direction) {
+        ClipContext context = new ClipContext(mc.player.getEyePosition(), point, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player);
+        BlockHitResult ray = mc.level.clip(context);
 
-        return ray.getType() == HitResult.Type.MISS || (ray.getBlockPos().equals(blockPos) && ray.getSide() == direction);
+        return ray.getType() == HitResult.Type.MISS || (ray.getBlockPos().equals(blockPos) && ray.getDirection() == direction);
     }
 
     /**
@@ -69,13 +68,13 @@ public class PrinterUtils {
 
     // Gets a set of points across a block shape's face as shown in the diagram
     // This is dynamic, so blocks like stairs or hoppers have more faces/points
-    public static Set<Vec3d> getShapeFacePoints(BlockPos blockPos, Direction face) {
-        Set<Vec3d> points = new LinkedHashSet<>();
+    public static Set<Vec3> getShapeFacePoints(BlockPos blockPos, Direction face) {
+        Set<Vec3> points = new LinkedHashSet<>();
 
-        BlockState state = mc.world.getBlockState(blockPos);
-        VoxelShape shape = state.isReplaceable() ? AIR_SHAPE : state.getOutlineShape(mc.world, blockPos);
+        BlockState state = mc.level.getBlockState(blockPos);
+        VoxelShape shape = state.canBeReplaced() ? AIR_SHAPE : state.getShape(mc.level, blockPos);
 
-        for (Box box : shape.getBoundingBoxes()) {
+        for (AABB box : shape.toAabbs()) {
             double minX = box.minX + blockPos.getX(), minY = box.minY + blockPos.getY(), minZ = box.minZ + blockPos.getZ();
             double maxX = box.maxX + blockPos.getX(), maxY = box.maxY + blockPos.getY(), maxZ = box.maxZ + blockPos.getZ();
 
@@ -83,12 +82,12 @@ public class PrinterUtils {
             for (double u : samples) {
                 for (double v : samples) {
                     switch (face) {
-                        case DOWN ->  points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), minY, MathHelper.lerp(v, minZ, maxZ)));
-                        case UP ->    points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), maxY, MathHelper.lerp(v, minZ, maxZ)));
-                        case NORTH -> points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), MathHelper.lerp(v, minY, maxY), minZ));
-                        case SOUTH -> points.add(new Vec3d(MathHelper.lerp(u, minX, maxX), MathHelper.lerp(v, minY, maxY), maxZ));
-                        case WEST ->  points.add(new Vec3d(minX, MathHelper.lerp(u, minY, maxY), MathHelper.lerp(v, minZ, maxZ)));
-                        case EAST ->  points.add(new Vec3d(maxX, MathHelper.lerp(u, minY, maxY), MathHelper.lerp(v, minZ, maxZ)));
+                        case DOWN ->  points.add(new Vec3(Mth.lerp(u, minX, maxX), minY, Mth.lerp(v, minZ, maxZ)));
+                        case UP ->    points.add(new Vec3(Mth.lerp(u, minX, maxX), maxY, Mth.lerp(v, minZ, maxZ)));
+                        case NORTH -> points.add(new Vec3(Mth.lerp(u, minX, maxX), Mth.lerp(v, minY, maxY), minZ));
+                        case SOUTH -> points.add(new Vec3(Mth.lerp(u, minX, maxX), Mth.lerp(v, minY, maxY), maxZ));
+                        case WEST ->  points.add(new Vec3(minX, Mth.lerp(u, minY, maxY), Mth.lerp(v, minZ, maxZ)));
+                        case EAST ->  points.add(new Vec3(maxX, Mth.lerp(u, minY, maxY), Mth.lerp(v, minZ, maxZ)));
                     }
                 }
             }

@@ -33,28 +33,25 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
-import net.minecraft.block.AbstractSignBlock;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
-import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.InventoryS2CPacket;
-import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.state.property.Properties;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.PlayerInput;
-import net.minecraft.world.World;
-
+import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.SignBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -448,10 +445,10 @@ public class DinoPrinter extends Module {
         // Find print locations
         int px = mc.player.getBlockX(), py = mc.player.getBlockY(), pz = mc.player.getBlockZ();
         int radius = (int) Math.ceil(placeRange.get());
-        int minY = Math.max(mc.world.getBottomY(), py - radius);
-        int maxY = Math.min(mc.world.getTopYInclusive(), py + radius);
+        int minY = Math.max(mc.level.getMinY(), py - radius);
+        int maxY = Math.min(mc.level.getMaxY(), py + radius);
 
-        BlockPos.Mutable blockPos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
         for (int x = px - radius; x <= px + radius; x++) {
             for (int z = pz - radius; z <= pz + radius; z++) {
                 for (int y = minY; y <= maxY; y++) {
@@ -460,13 +457,13 @@ public class DinoPrinter extends Module {
 
                     blockPos.set(x, y, z);
                     BlockState required = worldSchematic.getBlockState(blockPos);
-                    BlockState existing = mc.world.getBlockState(blockPos);
+                    BlockState existing = mc.level.getBlockState(blockPos);
 
                     // Only rendered schematic blocks can be placed
                     if (!DataManager.getRenderLayerRange().isPositionWithinRange(blockPos)) continue;
 
                     // Must be within world boundaries
-                    if (!World.isValid(blockPos)) continue;
+                    if (!Level.isInSpawnableBounds(blockPos)) continue;
 
                     if (BlockPrint.isValid(blockPos, required, existing, this)) {
                         BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required, existing, this);
@@ -495,7 +492,7 @@ public class DinoPrinter extends Module {
         // We simulate an entire inventory due to desynchronization with rotations
         mainInventory.clear();
         for (int i = 0; i <= SlotUtils.MAIN_END; i++) {
-            mainInventory.add(mc.player.getInventory().getStack(i).copy());
+            mainInventory.add(mc.player.getInventory().getItem(i).copy());
         }
 
         // Place blocks!
@@ -535,12 +532,12 @@ public class DinoPrinter extends Module {
                 }
 
                 // Simulate count decrement for our simulated inventory
-                inventoryStack.decrementUnlessCreative(1, mc.player);
+                inventoryStack.consume(1, mc.player);
             }
 
             if (!autoSwitch.get() && mc.player.getInventory().getSelectedSlot() != hotbarSlot) continue;
 
-            if (exitSigns.get() && blockPrint.required.getBlock() instanceof AbstractSignBlock) {
+            if (exitSigns.get() && blockPrint.required.getBlock() instanceof SignBlock) {
                 lastSignPlaceTime = System.currentTimeMillis();
             }
 
@@ -583,7 +580,7 @@ public class DinoPrinter extends Module {
             if (mc.player.isUsingItem()) return true;
         }
 
-        if (pauseOnMine.get() && mc.interactionManager.isBreakingBlock()) return true;
+        if (pauseOnMine.get() && mc.gameMode.isDestroying()) return true;
 
         if (pauseOnKillAura.get() && Modules.get().get(KillAura.class).attacking) return true;
 
@@ -627,37 +624,37 @@ public class DinoPrinter extends Module {
     private void onPacketReceive(PacketEvent.Receive event)  {
         // Cancel incoming packets that cause misplaces
         // Misplaces are caused when the server resyncs the player but the player already changed their slots again
-        if (event.packet instanceof ScreenHandlerSlotUpdateS2CPacket packet) {
-            ScreenHandler handler = mc.player.currentScreenHandler;
-            if (packet.getSyncId() != handler.syncId) return;
+        if (event.packet instanceof ClientboundContainerSetSlotPacket packet) {
+            AbstractContainerMenu handler = mc.player.containerMenu;
+            if (packet.getContainerId() != handler.containerId) return;
 
             int packetSlot = packet.getSlot();
             if (packetSlot < 0 || packetSlot >= handler.slots.size()) return;
 
             Slot screenSlot = handler.getSlot(packetSlot);
-            if (screenSlot.inventory != mc.player.getInventory()) return;
+            if (screenSlot.container != mc.player.getInventory()) return;
 
-            int slot = screenSlot.getIndex();
+            int slot = screenSlot.getContainerSlot();
             if (slot < 0 || slot >= printSlots.size()) return;
 
             if (printSlots.get(slot).isCancelSync()) {
                 event.cancel();
             }
-        } else if (event.packet instanceof InventoryS2CPacket packet) {
-            ScreenHandler handler = mc.player.currentScreenHandler;
-            if (packet.syncId() != handler.syncId) return;
+        } else if (event.packet instanceof ClientboundContainerSetContentPacket packet) {
+            AbstractContainerMenu handler = mc.player.containerMenu;
+            if (packet.containerId() != handler.containerId) return;
 
-            List<ItemStack> contents = packet.contents();
+            List<ItemStack> contents = packet.items();
             for (PrintSlot printSlot : printSlots) {
                 if (!printSlot.isCancelSync()) continue;
 
-                int slot = handler.getSlotIndex(mc.player.getInventory(), printSlot.slot).orElse(-1);
+                int slot = handler.findSlot(mc.player.getInventory(), printSlot.slot).orElse(-1);
                 if (slot >= 0 && slot < contents.size()) {
-                    contents.set(slot, mc.player.getInventory().getStack(printSlot.slot).copy());
+                    contents.set(slot, mc.player.getInventory().getItem(printSlot.slot).copy());
                 }
             }
         // Remove cached interact if the server confirmed an update
-        } else if (event.packet instanceof BlockUpdateS2CPacket packet) {
+        } else if (event.packet instanceof ClientboundBlockUpdatePacket packet) {
             cachedInteracts.removeIf(blockInteract -> {
                 return blockInteract.blockPos.equals(packet.getPos());
             });
@@ -702,11 +699,11 @@ public class DinoPrinter extends Module {
         Item item = stack.getItem();
         if (item instanceof BlockItem) return true;
 
-        if (stack.hasEnchantments()) return false;
+        if (stack.isEnchanted()) return false;
 
         if (item == Items.EXPERIENCE_BOTTLE || item == Items.TOTEM_OF_UNDYING) return false;
 
-        if (item.getComponents().get(DataComponentTypes.FOOD) != null) {
+        if (item.components().get(DataComponents.FOOD) != null) {
             return item == Items.ROTTEN_FLESH || item == Items.SPIDER_EYE;
         }
         return true;
@@ -728,8 +725,8 @@ public class DinoPrinter extends Module {
 
     private boolean isPlayerMoving() {
         // Grim requirements
-        PlayerInput input = mc.player.input.playerInput;
-        return input.forward() || input.backward() || input.left() || input.right() || input.jump() || mc.player.isSprinting() || mc.player.isSneaking();
+        Input input = mc.player.input.keyPresses;
+        return input.forward() || input.backward() || input.left() || input.right() || input.jump() || mc.player.isSprinting() || mc.player.isShiftKeyDown();
     }
 
 
@@ -750,13 +747,13 @@ public class DinoPrinter extends Module {
 
     private void interactPlace(BlockPrint blockPrint, int inventorySlot, int hotbarSlot) {
         // Send our inputs with sneaking injected
-        boolean isSneaking = mc.player.isSneaking();
-        PlayerInput old = mc.player.input.playerInput;
+        boolean isSneaking = mc.player.isShiftKeyDown();
+        Input old = mc.player.input.keyPresses;
         if (blockPrint.sneaking && !isSneaking) {
-            PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
-            mc.player.input.playerInput = sneak;
-            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(sneak));
-            mc.player.setSneaking(true);
+            Input sneak = new Input(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
+            mc.player.input.keyPresses = sneak;
+            mc.getConnection().send(new ServerboundPlayerInputPacket(sneak));
+            mc.player.setShiftKeyDown(true);
         }
 
         if (autoSwitch.get()) {
@@ -769,10 +766,10 @@ public class DinoPrinter extends Module {
 
         // Buckets have their own unique logic
         if (blockPrint.fluid) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
             swingHand();
         // Otherwise do standard interaction
-        } else if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockPrint.hit).isAccepted()) {
+        } else if (mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, blockPrint.hit).consumesAction()) {
             swingHand();
         }
 
@@ -780,9 +777,9 @@ public class DinoPrinter extends Module {
 
         // Go back to our old inputs
         if (blockPrint.sneaking && !isSneaking) {
-            mc.player.input.playerInput = old;
-            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(old));
-            mc.player.setSneaking(isSneaking);
+            mc.player.input.keyPresses = old;
+            mc.getConnection().send(new ServerboundPlayerInputPacket(old));
+            mc.player.setShiftKeyDown(isSneaking);
         }
 
         if (render.get()) {
@@ -804,30 +801,30 @@ public class DinoPrinter extends Module {
 
     private void interactBlock(BlockInteract blockInteract) {
         // Send our inputs with sneaking removed
-        boolean isSneaking = mc.player.isSneaking();
-        PlayerInput old = mc.player.input.playerInput;
+        boolean isSneaking = mc.player.isShiftKeyDown();
+        Input old = mc.player.input.keyPresses;
         if (isSneaking) {
-            PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), false, old.sprint());
-            mc.player.input.playerInput = sneak;
-            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(sneak));
-            mc.player.setSneaking(false);
+            Input sneak = new Input(old.forward(), old.backward(), old.left(), old.right(), old.jump(), false, old.sprint());
+            mc.player.input.keyPresses = sneak;
+            mc.getConnection().send(new ServerboundPlayerInputPacket(sneak));
+            mc.player.setShiftKeyDown(false);
         }
 
-        if (mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, blockInteract.hit).isAccepted()) {
+        if (mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, blockInteract.hit).consumesAction()) {
             swingHand();
         }
 
         // Go back to our old inputs
         if (isSneaking) {
-            mc.player.input.playerInput = old;
-            mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(old));
-            mc.player.setSneaking(isSneaking);
+            mc.player.input.keyPresses = old;
+            mc.getConnection().send(new ServerboundPlayerInputPacket(old));
+            mc.player.setShiftKeyDown(isSneaking);
         }
     }
 
     private void swingHand() {
-        if (swing.get()) mc.player.swingHand(Hand.MAIN_HAND);
-        else mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+        if (swing.get()) mc.player.swing(InteractionHand.MAIN_HAND);
+        else mc.getConnection().send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
     }
 
     /// Rendering
@@ -906,7 +903,7 @@ public class DinoPrinter extends Module {
     private static double distanceToPlayer(BlockPos pos) {
         if (MeteorClient.mc.player == null) return 0;
 
-        return MeteorClient.mc.player.getEntityPos().squaredDistanceTo(pos.toCenterPos());
+        return MeteorClient.mc.player.position().distanceToSqr(pos.getCenter());
     }
 
     private static final Comparator<BlockPrint> hotbarAlgorithm = (a, b) -> {

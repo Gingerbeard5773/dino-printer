@@ -10,21 +10,30 @@
 package dinosaurwizard.dinoprinter.utils;
 
 import dinosaurwizard.dinoprinter.modules.DinoPrinter;
-import net.minecraft.block.*;
-import net.minecraft.block.enums.ChestType;
-import net.minecraft.block.enums.SlabType;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.item.ItemStack;
-import net.minecraft.state.property.Properties;
-import net.minecraft.state.property.Property;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.FlowerPotBlock;
+import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.MultifaceSpreadeableBlock;
+import net.minecraft.world.level.block.TripWireBlock;
+import net.minecraft.world.level.block.TripWireHookBlock;
+import net.minecraft.world.level.block.VineBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.ChestType;
+import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import java.util.List;
 import java.util.Set;
 
@@ -49,7 +58,7 @@ public class BlockPrint {
         this.required = required;
         this.existing = existing;
 
-        this.fluid = required.getBlock() instanceof FluidBlock;
+        this.fluid = required.getBlock() instanceof LiquidBlock;
         this.rotatable = isRotatable();
         this.hit = calculateBestPlaceHit();
     }
@@ -58,25 +67,25 @@ public class BlockPrint {
     public static boolean isValid(BlockPos blockPos, BlockState required, BlockState existing, DinoPrinter printer) {
         if (required.isAir()) return false;
 
-        boolean fluid = required.getBlock() instanceof FluidBlock;
-        if (fluid && (!required.getFluidState().isStill() || !printer.fluids.get())) return false;
+        boolean fluid = required.getBlock() instanceof LiquidBlock;
+        if (fluid && (!required.getFluidState().isSource() || !printer.fluids.get())) return false;
 
         if (!printer.incrementalStates.get() || !BlockPrint.isIncremental(required, existing)) {
             // Spot must be air or some other replaceable block
-            if (!existing.isReplaceable()) return false;
+            if (!existing.canBeReplaced()) return false;
 
             // Spot is not already the required blockstate
-            if (required.getBlock() == existing.getBlock() && (!fluid || existing.getFluidState().isStill())) return false;
+            if (required.getBlock() == existing.getBlock() && (!fluid || existing.getFluidState().isSource())) return false;
 
             // Don't place in a position we already attempted
             if (printer.cachedPositions.contains(blockPos)) return false;
         }
 
         // Check if legally placeable. For example, if its a torch, it can only be placed onto another block.
-        if (!required.canPlaceAt(mc.world, blockPos)) return false;
+        if (!required.canSurvive(mc.level, blockPos)) return false;
 
         // No intersecting entities at our position
-        if (!mc.world.canPlace(required, blockPos, ShapeContext.absent())) return false;
+        if (!mc.level.isUnobstructed(required, blockPos, CollisionContext.empty())) return false;
 
         return true;
     }
@@ -92,39 +101,39 @@ public class BlockPrint {
 
     // Determine if our required blockstate has directionality.
     private boolean isRotatable() {
-        return required.contains(Properties.FACING) || 
-               required.contains(Properties.HORIZONTAL_FACING) ||
-               required.contains(Properties.HORIZONTAL_AXIS) ||
-               required.contains(Properties.AXIS) ||
-               required.contains(Properties.HOPPER_FACING) ||
-               required.contains(Properties.ORIENTATION) ||
-               required.contains(Properties.VERTICAL_DIRECTION) || 
-               required.contains(Properties.ROTATION);
+        return required.hasProperty(BlockStateProperties.FACING) || 
+               required.hasProperty(BlockStateProperties.HORIZONTAL_FACING) ||
+               required.hasProperty(BlockStateProperties.HORIZONTAL_AXIS) ||
+               required.hasProperty(BlockStateProperties.AXIS) ||
+               required.hasProperty(BlockStateProperties.FACING_HOPPER) ||
+               required.hasProperty(BlockStateProperties.ORIENTATION) ||
+               required.hasProperty(BlockStateProperties.VERTICAL_DIRECTION) || 
+               required.hasProperty(BlockStateProperties.ROTATION_16);
     }
 
     // Yaw when placing the block
     public double getYaw() {
         if (useRotation) return placeYaw;
 
-        return RotationManager.getYaw(hit.getPos());
+        return RotationManager.getYaw(hit.getLocation());
     }
 
     // Pitch when placing the block
     public double getPitch() {
         if (useRotation) return placePitch;
 
-        return RotationManager.getPitch(hit.getPos());
+        return RotationManager.getPitch(hit.getLocation());
     }
 
     // Gets a simulated place state using customizable inputs.
     // The simulated place state is effectively the blockState when it is actually placed, allowing us to determine what it will look like before it is placed.
     // This can be used to compare certain attributes such as the facing direction.
     private BlockState getSimulatedPlaceState(float yaw, float pitch, BlockHitResult blockHit) {
-        ItemStack stack = asItem().getDefaultStack();
+        ItemStack stack = asItem().getDefaultInstance();
         if (!(stack.getItem() instanceof BlockItem blockItem)) return null;
 
-        PrinterPlaceContext context = new PrinterPlaceContext(mc.player, yaw, pitch, sneaking, Hand.MAIN_HAND, stack, blockHit);
-        if (!existing.canReplace(context)) return null;
+        PrinterPlaceContext context = new PrinterPlaceContext(mc.player, yaw, pitch, sneaking, InteractionHand.MAIN_HAND, stack, blockHit);
+        if (!existing.canBeReplaced(context)) return null;
 
         return blockItem.getPlacementState(context);
     }
@@ -135,13 +144,13 @@ public class BlockPrint {
 
         if (!incremental || fluid) {
             for (Direction direction : Direction.values()) {
-                BlockPos adjacent = blockPos.offset(direction);
+                BlockPos adjacent = blockPos.relative(direction);
                 Direction opposite = direction.getOpposite();
 
                 // Check spots on other blocks to place onto
-                if (!mc.world.getBlockState(adjacent).isReplaceable()) {
-                    Set<Vec3d> points = PrinterUtils.getShapeFacePoints(adjacent, opposite);
-                    for (Vec3d point : points) {
+                if (!mc.level.getBlockState(adjacent).canBeReplaced()) {
+                    Set<Vec3> points = PrinterUtils.getShapeFacePoints(adjacent, opposite);
+                    for (Vec3 point : points) {
                         if (!isPointValid(point, adjacent, opposite)) continue;
 
                         BlockHitResult placeHit = new BlockHitResult(point, opposite, adjacent, false);
@@ -157,8 +166,8 @@ public class BlockPrint {
         // Only for air placement or if we have an incremental block
         if ((printer.airPlace.get() || incremental) && !fluid) {
             for (Direction direction : Direction.values()) {
-                Set<Vec3d> points = PrinterUtils.getShapeFacePoints(blockPos, direction);
-                for (Vec3d point : points) {
+                Set<Vec3> points = PrinterUtils.getShapeFacePoints(blockPos, direction);
+                for (Vec3 point : points) {
                     if (!isPointValid(point, blockPos, direction)) continue;
 
                     BlockHitResult placeHit = new BlockHitResult(point, direction, blockPos, false);
@@ -176,14 +185,14 @@ public class BlockPrint {
     private boolean isMatchingRequirements(BlockHitResult placeHit) {
         sneaking = printer.sneakPlace.get();
 
-        if (required.getBlock().getStateManager().getProperties().isEmpty() || fluid) return true;
+        if (required.getBlock().getStateDefinition().getProperties().isEmpty() || fluid) return true;
 
-        if (printer.sneakPlace.get() || mc.player.isSneaking()) {
+        if (printer.sneakPlace.get() || mc.player.isShiftKeyDown()) {
             sneaking = true;
             if (isMatchingProperties(placeHit) && isMatchingRotation(placeHit)) return true;
         }
 
-        if (!mc.player.isSneaking()) {
+        if (!mc.player.isShiftKeyDown()) {
             sneaking = false;
             if (isMatchingProperties(placeHit) && isMatchingRotation(placeHit)) return true;
         }
@@ -196,10 +205,10 @@ public class BlockPrint {
         Block block = required.getBlock();
 
         // Ignore property matching for blocks:
-        if (block instanceof TripwireBlock || block instanceof TripwireHookBlock) return true;
+        if (block instanceof TripWireBlock || block instanceof TripWireHookBlock) return true;
 
-        float yaw = (float) RotationManager.getYaw(blockHit.getPos());
-        float pitch = (float) RotationManager.getPitch(blockHit.getPos());
+        float yaw = (float) RotationManager.getYaw(blockHit.getLocation());
+        float pitch = (float) RotationManager.getPitch(blockHit.getLocation());
         BlockState simulated = getSimulatedPlaceState(yaw, pitch, blockHit);
         if (simulated == null) return false;
 
@@ -208,49 +217,49 @@ public class BlockPrint {
 
         if (printer.halfBlocks.get()) {
             // Slab Type - half slabs & also handling of double slabs
-            if (required.contains(Properties.SLAB_TYPE) && simulated.contains(Properties.SLAB_TYPE)) {
-                SlabType requiredType = required.get(Properties.SLAB_TYPE);
-                SlabType simulatedType = simulated.get(Properties.SLAB_TYPE);
+            if (required.hasProperty(BlockStateProperties.SLAB_TYPE) && simulated.hasProperty(BlockStateProperties.SLAB_TYPE)) {
+                SlabType requiredType = required.getValue(BlockStateProperties.SLAB_TYPE);
+                SlabType simulatedType = simulated.getValue(BlockStateProperties.SLAB_TYPE);
                 if (requiredType == SlabType.DOUBLE) {
-                    if (existing.contains(Properties.SLAB_TYPE)) {
+                    if (existing.hasProperty(BlockStateProperties.SLAB_TYPE)) {
                         if (simulatedType != SlabType.DOUBLE) return false;
                     }
                 } else {
                     if (requiredType != simulatedType) return false;
                 }
             // Block Half - stairs, trapdoors
-            } else if (required.contains(Properties.BLOCK_HALF) && simulated.contains(Properties.BLOCK_HALF)) {
-                if (required.get(Properties.BLOCK_HALF) != simulated.get(Properties.BLOCK_HALF)) return false;
+            } else if (required.hasProperty(BlockStateProperties.HALF) && simulated.hasProperty(BlockStateProperties.HALF)) {
+                if (required.getValue(BlockStateProperties.HALF) != simulated.getValue(BlockStateProperties.HALF)) return false;
             }
         }
 
         if (printer.miscStates.get()) {
             // Door Hinge - doors
-            if (required.contains(Properties.DOOR_HINGE) && simulated.contains(Properties.DOOR_HINGE)) {
-                if (required.get(Properties.DOOR_HINGE) != simulated.get(Properties.DOOR_HINGE)) return false;
+            if (required.hasProperty(BlockStateProperties.DOOR_HINGE) && simulated.hasProperty(BlockStateProperties.DOOR_HINGE)) {
+                if (required.getValue(BlockStateProperties.DOOR_HINGE) != simulated.getValue(BlockStateProperties.DOOR_HINGE)) return false;
             // Block Face - wall mounted blocks like torches or levers
-            } else if (required.contains(Properties.BLOCK_FACE) && simulated.contains(Properties.BLOCK_FACE)) {
-                if (required.get(Properties.BLOCK_FACE) != simulated.get(Properties.BLOCK_FACE)) return false;
+            } else if (required.hasProperty(BlockStateProperties.ATTACH_FACE) && simulated.hasProperty(BlockStateProperties.ATTACH_FACE)) {
+                if (required.getValue(BlockStateProperties.ATTACH_FACE) != simulated.getValue(BlockStateProperties.ATTACH_FACE)) return false;
             // Attachment - bells
-            } else if (required.contains(Properties.ATTACHMENT) && simulated.contains(Properties.ATTACHMENT)) {
-                if (required.get(Properties.ATTACHMENT) != simulated.get(Properties.ATTACHMENT)) return false;
+            } else if (required.hasProperty(BlockStateProperties.BELL_ATTACHMENT) && simulated.hasProperty(BlockStateProperties.BELL_ATTACHMENT)) {
+                if (required.getValue(BlockStateProperties.BELL_ATTACHMENT) != simulated.getValue(BlockStateProperties.BELL_ATTACHMENT)) return false;
             // Attached - hanging signs
-            } else if (required.contains(Properties.ATTACHED) && simulated.contains(Properties.ATTACHED)) {
-                if (required.get(Properties.ATTACHED) != simulated.get(Properties.ATTACHED)) return false;
+            } else if (required.hasProperty(BlockStateProperties.ATTACHED) && simulated.hasProperty(BlockStateProperties.ATTACHED)) {
+                if (required.getValue(BlockStateProperties.ATTACHED) != simulated.getValue(BlockStateProperties.ATTACHED)) return false;
             // Hanging - lanterns
-            } else if (required.contains(Properties.HANGING) && simulated.contains(Properties.HANGING)) {
-                if (required.get(Properties.HANGING) != simulated.get(Properties.HANGING)) return false;
+            } else if (required.hasProperty(BlockStateProperties.HANGING) && simulated.hasProperty(BlockStateProperties.HANGING)) {
+                if (required.getValue(BlockStateProperties.HANGING) != simulated.getValue(BlockStateProperties.HANGING)) return false;
             // Bed Part - beds
-            } else if (required.contains(Properties.BED_PART) && simulated.contains(Properties.BED_PART)) {
-                if (required.get(Properties.BED_PART) != simulated.get(Properties.BED_PART)) return false;
+            } else if (required.hasProperty(BlockStateProperties.BED_PART) && simulated.hasProperty(BlockStateProperties.BED_PART)) {
+                if (required.getValue(BlockStateProperties.BED_PART) != simulated.getValue(BlockStateProperties.BED_PART)) return false;
             // Chest Type - chests 
-            } else if (required.contains(Properties.CHEST_TYPE) && simulated.contains(Properties.CHEST_TYPE)) {
-                ChestType requiredType = required.get(Properties.CHEST_TYPE);
-                ChestType simulatedType = simulated.get(Properties.CHEST_TYPE);
+            } else if (required.hasProperty(BlockStateProperties.CHEST_TYPE) && simulated.hasProperty(BlockStateProperties.CHEST_TYPE)) {
+                ChestType requiredType = required.getValue(BlockStateProperties.CHEST_TYPE);
+                ChestType simulatedType = simulated.getValue(BlockStateProperties.CHEST_TYPE);
                 if (requiredType != ChestType.SINGLE) {
-                    BlockPos neighborPos = blockPos.offset(ChestBlock.getFacing(required));
-                    BlockState neighborState = mc.world.getBlockState(neighborPos);
-                    if (neighborState.contains(Properties.CHEST_TYPE) && requiredType != simulatedType) return false;
+                    BlockPos neighborPos = blockPos.relative(ChestBlock.getConnectedDirection(required));
+                    BlockState neighborState = mc.level.getBlockState(neighborPos);
+                    if (neighborState.hasProperty(BlockStateProperties.CHEST_TYPE) && requiredType != simulatedType) return false;
                 } else {
                     if (requiredType != simulatedType) return false;
                 }
@@ -259,28 +268,28 @@ public class BlockPrint {
 
         if (printer.incrementalStates.get()) {
             // Incremental states - snow layers, turtle eggs, candles, pickles, wildflowers, leaflitter
-            if (simulated.contains(Properties.LAYERS) && existing.contains(Properties.LAYERS)) {
-                if (simulated.get(Properties.LAYERS) <= existing.get(Properties.LAYERS)) return false;
-            } else if (simulated.contains(Properties.EGGS) && existing.contains(Properties.EGGS)) {
-                if (simulated.get(Properties.EGGS) <= existing.get(Properties.EGGS)) return false;
-            } else if (simulated.contains(Properties.CANDLES) && existing.contains(Properties.CANDLES)) {
-                if (simulated.get(Properties.CANDLES) <= existing.get(Properties.CANDLES)) return false;
-            } else if (simulated.contains(Properties.PICKLES) && existing.contains(Properties.PICKLES)) {
-                if (simulated.get(Properties.PICKLES) <= existing.get(Properties.PICKLES)) return false;
-            } else if (simulated.contains(Properties.FLOWER_AMOUNT) && existing.contains(Properties.FLOWER_AMOUNT)) {
-                if (simulated.get(Properties.FLOWER_AMOUNT) <= existing.get(Properties.FLOWER_AMOUNT)) return false;
-            } else if (simulated.contains(Properties.SEGMENT_AMOUNT) && existing.contains(Properties.SEGMENT_AMOUNT)) {
-                if (simulated.get(Properties.SEGMENT_AMOUNT) <= existing.get(Properties.SEGMENT_AMOUNT)) return false;
+            if (simulated.hasProperty(BlockStateProperties.LAYERS) && existing.hasProperty(BlockStateProperties.LAYERS)) {
+                if (simulated.getValue(BlockStateProperties.LAYERS) <= existing.getValue(BlockStateProperties.LAYERS)) return false;
+            } else if (simulated.hasProperty(BlockStateProperties.EGGS) && existing.hasProperty(BlockStateProperties.EGGS)) {
+                if (simulated.getValue(BlockStateProperties.EGGS) <= existing.getValue(BlockStateProperties.EGGS)) return false;
+            } else if (simulated.hasProperty(BlockStateProperties.CANDLES) && existing.hasProperty(BlockStateProperties.CANDLES)) {
+                if (simulated.getValue(BlockStateProperties.CANDLES) <= existing.getValue(BlockStateProperties.CANDLES)) return false;
+            } else if (simulated.hasProperty(BlockStateProperties.PICKLES) && existing.hasProperty(BlockStateProperties.PICKLES)) {
+                if (simulated.getValue(BlockStateProperties.PICKLES) <= existing.getValue(BlockStateProperties.PICKLES)) return false;
+            } else if (simulated.hasProperty(BlockStateProperties.FLOWER_AMOUNT) && existing.hasProperty(BlockStateProperties.FLOWER_AMOUNT)) {
+                if (simulated.getValue(BlockStateProperties.FLOWER_AMOUNT) <= existing.getValue(BlockStateProperties.FLOWER_AMOUNT)) return false;
+            } else if (simulated.hasProperty(BlockStateProperties.SEGMENT_AMOUNT) && existing.hasProperty(BlockStateProperties.SEGMENT_AMOUNT)) {
+                if (simulated.getValue(BlockStateProperties.SEGMENT_AMOUNT) <= existing.getValue(BlockStateProperties.SEGMENT_AMOUNT)) return false;
             }
 
             // Multi face blocks - vines, glow lichen, sculk veins
-            if (block instanceof MultifaceGrowthBlock || block instanceof VineBlock) {
-                if (isMatchingPropertyMultiFace(simulated, Properties.UP)) return true;
-                if (isMatchingPropertyMultiFace(simulated, Properties.DOWN)) return true;
-                if (isMatchingPropertyMultiFace(simulated, Properties.EAST)) return true;
-                if (isMatchingPropertyMultiFace(simulated, Properties.NORTH)) return true;
-                if (isMatchingPropertyMultiFace(simulated, Properties.SOUTH)) return true;
-                if (isMatchingPropertyMultiFace(simulated, Properties.WEST)) return true;
+            if (block instanceof MultifaceSpreadeableBlock || block instanceof VineBlock) {
+                if (isMatchingPropertyMultiFace(simulated, BlockStateProperties.UP)) return true;
+                if (isMatchingPropertyMultiFace(simulated, BlockStateProperties.DOWN)) return true;
+                if (isMatchingPropertyMultiFace(simulated, BlockStateProperties.EAST)) return true;
+                if (isMatchingPropertyMultiFace(simulated, BlockStateProperties.NORTH)) return true;
+                if (isMatchingPropertyMultiFace(simulated, BlockStateProperties.SOUTH)) return true;
+                if (isMatchingPropertyMultiFace(simulated, BlockStateProperties.WEST)) return true;
                 return false;
             }
         }
@@ -288,9 +297,9 @@ public class BlockPrint {
     }
 
     private boolean isMatchingPropertyMultiFace(BlockState simulated, Property<Boolean> property) {
-        return simulated.contains(property) && required.contains(property) &&
-               simulated.get(property) && required.get(property) &&
-               (!existing.contains(property) || !existing.get(property));
+        return simulated.hasProperty(property) && required.hasProperty(property) &&
+               simulated.getValue(property) && required.getValue(property) &&
+               (!existing.hasProperty(property) || !existing.getValue(property));
     }
 
     // Check if the BlockHitResult has the correct rotation
@@ -299,22 +308,22 @@ public class BlockPrint {
         if (simulated == null) return false;
 
         // Check if our facing direction is the same
-        if (required.contains(Properties.FACING) && simulated.contains(Properties.FACING)) {
-            if (required.get(Properties.FACING) != simulated.get(Properties.FACING)) return false;
-        } else if (required.contains(Properties.HORIZONTAL_FACING) && simulated.contains(Properties.HORIZONTAL_FACING)) {
-            if (required.get(Properties.HORIZONTAL_FACING) != simulated.get(Properties.HORIZONTAL_FACING)) return false;
-        } else if (required.contains(Properties.HORIZONTAL_AXIS) && simulated.contains(Properties.HORIZONTAL_AXIS)) {
-            if (required.get(Properties.HORIZONTAL_AXIS) != simulated.get(Properties.HORIZONTAL_AXIS)) return false;
-        } else if (required.contains(Properties.AXIS) && simulated.contains(Properties.AXIS)) {
-            if (required.get(Properties.AXIS) != simulated.get(Properties.AXIS)) return false;
-        } else if (required.contains(Properties.HOPPER_FACING) && simulated.contains(Properties.HOPPER_FACING)) {
-            if (required.get(Properties.HOPPER_FACING) != simulated.get(Properties.HOPPER_FACING)) return false;
-        } else if (required.contains(Properties.ORIENTATION) && simulated.contains(Properties.ORIENTATION)) {
-            if (required.get(Properties.ORIENTATION) != simulated.get(Properties.ORIENTATION)) return false;
-        } else if (required.contains(Properties.VERTICAL_DIRECTION) && simulated.contains(Properties.VERTICAL_DIRECTION)) {
-            if (required.get(Properties.VERTICAL_DIRECTION) != simulated.get(Properties.VERTICAL_DIRECTION)) return false;
-        } else if (required.contains(Properties.ROTATION) && simulated.contains(Properties.ROTATION)) {
-            if (required.get(Properties.ROTATION) != simulated.get(Properties.ROTATION)) return false;
+        if (required.hasProperty(BlockStateProperties.FACING) && simulated.hasProperty(BlockStateProperties.FACING)) {
+            if (required.getValue(BlockStateProperties.FACING) != simulated.getValue(BlockStateProperties.FACING)) return false;
+        } else if (required.hasProperty(BlockStateProperties.HORIZONTAL_FACING) && simulated.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
+            if (required.getValue(BlockStateProperties.HORIZONTAL_FACING) != simulated.getValue(BlockStateProperties.HORIZONTAL_FACING)) return false;
+        } else if (required.hasProperty(BlockStateProperties.HORIZONTAL_AXIS) && simulated.hasProperty(BlockStateProperties.HORIZONTAL_AXIS)) {
+            if (required.getValue(BlockStateProperties.HORIZONTAL_AXIS) != simulated.getValue(BlockStateProperties.HORIZONTAL_AXIS)) return false;
+        } else if (required.hasProperty(BlockStateProperties.AXIS) && simulated.hasProperty(BlockStateProperties.AXIS)) {
+            if (required.getValue(BlockStateProperties.AXIS) != simulated.getValue(BlockStateProperties.AXIS)) return false;
+        } else if (required.hasProperty(BlockStateProperties.FACING_HOPPER) && simulated.hasProperty(BlockStateProperties.FACING_HOPPER)) {
+            if (required.getValue(BlockStateProperties.FACING_HOPPER) != simulated.getValue(BlockStateProperties.FACING_HOPPER)) return false;
+        } else if (required.hasProperty(BlockStateProperties.ORIENTATION) && simulated.hasProperty(BlockStateProperties.ORIENTATION)) {
+            if (required.getValue(BlockStateProperties.ORIENTATION) != simulated.getValue(BlockStateProperties.ORIENTATION)) return false;
+        } else if (required.hasProperty(BlockStateProperties.VERTICAL_DIRECTION) && simulated.hasProperty(BlockStateProperties.VERTICAL_DIRECTION)) {
+            if (required.getValue(BlockStateProperties.VERTICAL_DIRECTION) != simulated.getValue(BlockStateProperties.VERTICAL_DIRECTION)) return false;
+        } else if (required.hasProperty(BlockStateProperties.ROTATION_16) && simulated.hasProperty(BlockStateProperties.ROTATION_16)) {
+            if (required.getValue(BlockStateProperties.ROTATION_16) != simulated.getValue(BlockStateProperties.ROTATION_16)) return false;
         }
 
         return true;
@@ -324,8 +333,8 @@ public class BlockPrint {
     private boolean isMatchingRotation(BlockHitResult blockHit) {
         if (!printer.rotationPlace.get() || !rotatable) return true;
 
-        float legitYaw = (float) RotationManager.getYaw(blockHit.getPos());
-        float legitPitch = (float) RotationManager.getPitch(blockHit.getPos());
+        float legitYaw = (float) RotationManager.getYaw(blockHit.getLocation());
+        float legitPitch = (float) RotationManager.getPitch(blockHit.getLocation());
 
         // Hack rotation calculation
         if (!printer.strictRotation.get()) {
@@ -356,42 +365,42 @@ public class BlockPrint {
     // Determines if we can place again to increment the block state.
     public static boolean isIncremental(BlockState required, BlockState existing) {
         Block block = required.getBlock();
-        if (block.getStateManager().getProperties().isEmpty()) return false;
+        if (block.getStateDefinition().getProperties().isEmpty()) return false;
 
         if (block != existing.getBlock()) return false;
 
-        if (required.contains(Properties.SLAB_TYPE) && existing.contains(Properties.SLAB_TYPE)) {
-            return required.get(Properties.SLAB_TYPE) == SlabType.DOUBLE && existing.get(Properties.SLAB_TYPE) != SlabType.DOUBLE;
-        } else if (required.contains(Properties.LAYERS) && existing.contains(Properties.LAYERS)) {
-            return required.get(Properties.LAYERS) > existing.get(Properties.LAYERS);
-        } else if (required.contains(Properties.EGGS) && existing.contains(Properties.EGGS)) {
-            return required.get(Properties.EGGS) > existing.get(Properties.EGGS);
-        } else if (required.contains(Properties.CANDLES) && existing.contains(Properties.CANDLES)) {
-            return required.get(Properties.CANDLES) > existing.get(Properties.CANDLES);
-        } else if (required.contains(Properties.PICKLES) && existing.contains(Properties.PICKLES)) {
-            return required.get(Properties.PICKLES) > existing.get(Properties.PICKLES);
-        } else if (required.contains(Properties.FLOWER_AMOUNT) && existing.contains(Properties.FLOWER_AMOUNT)) {
-            return required.get(Properties.FLOWER_AMOUNT) > existing.get(Properties.FLOWER_AMOUNT);
-        } else if (required.contains(Properties.SEGMENT_AMOUNT) && existing.contains(Properties.SEGMENT_AMOUNT)) {
-            return required.get(Properties.SEGMENT_AMOUNT) > existing.get(Properties.SEGMENT_AMOUNT);
+        if (required.hasProperty(BlockStateProperties.SLAB_TYPE) && existing.hasProperty(BlockStateProperties.SLAB_TYPE)) {
+            return required.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.DOUBLE && existing.getValue(BlockStateProperties.SLAB_TYPE) != SlabType.DOUBLE;
+        } else if (required.hasProperty(BlockStateProperties.LAYERS) && existing.hasProperty(BlockStateProperties.LAYERS)) {
+            return required.getValue(BlockStateProperties.LAYERS) > existing.getValue(BlockStateProperties.LAYERS);
+        } else if (required.hasProperty(BlockStateProperties.EGGS) && existing.hasProperty(BlockStateProperties.EGGS)) {
+            return required.getValue(BlockStateProperties.EGGS) > existing.getValue(BlockStateProperties.EGGS);
+        } else if (required.hasProperty(BlockStateProperties.CANDLES) && existing.hasProperty(BlockStateProperties.CANDLES)) {
+            return required.getValue(BlockStateProperties.CANDLES) > existing.getValue(BlockStateProperties.CANDLES);
+        } else if (required.hasProperty(BlockStateProperties.PICKLES) && existing.hasProperty(BlockStateProperties.PICKLES)) {
+            return required.getValue(BlockStateProperties.PICKLES) > existing.getValue(BlockStateProperties.PICKLES);
+        } else if (required.hasProperty(BlockStateProperties.FLOWER_AMOUNT) && existing.hasProperty(BlockStateProperties.FLOWER_AMOUNT)) {
+            return required.getValue(BlockStateProperties.FLOWER_AMOUNT) > existing.getValue(BlockStateProperties.FLOWER_AMOUNT);
+        } else if (required.hasProperty(BlockStateProperties.SEGMENT_AMOUNT) && existing.hasProperty(BlockStateProperties.SEGMENT_AMOUNT)) {
+            return required.getValue(BlockStateProperties.SEGMENT_AMOUNT) > existing.getValue(BlockStateProperties.SEGMENT_AMOUNT);
         }
 
-        if (block instanceof MultifaceGrowthBlock || block instanceof VineBlock) {
-            if (required.contains(Properties.UP) && required.get(Properties.UP) && !existing.get(Properties.UP)) return true;
-            if (required.contains(Properties.DOWN) && required.get(Properties.DOWN) && !existing.get(Properties.DOWN)) return true;
-            if (required.contains(Properties.EAST) && required.get(Properties.EAST) && !existing.get(Properties.EAST)) return true;
-            if (required.contains(Properties.NORTH) && required.get(Properties.NORTH) && !existing.get(Properties.NORTH)) return true;
-            if (required.contains(Properties.SOUTH) && required.get(Properties.SOUTH) && !existing.get(Properties.SOUTH)) return true;
-            if (required.contains(Properties.WEST) && required.get(Properties.WEST) && !existing.get(Properties.WEST)) return true;
+        if (block instanceof MultifaceSpreadeableBlock || block instanceof VineBlock) {
+            if (required.hasProperty(BlockStateProperties.UP) && required.getValue(BlockStateProperties.UP) && !existing.getValue(BlockStateProperties.UP)) return true;
+            if (required.hasProperty(BlockStateProperties.DOWN) && required.getValue(BlockStateProperties.DOWN) && !existing.getValue(BlockStateProperties.DOWN)) return true;
+            if (required.hasProperty(BlockStateProperties.EAST) && required.getValue(BlockStateProperties.EAST) && !existing.getValue(BlockStateProperties.EAST)) return true;
+            if (required.hasProperty(BlockStateProperties.NORTH) && required.getValue(BlockStateProperties.NORTH) && !existing.getValue(BlockStateProperties.NORTH)) return true;
+            if (required.hasProperty(BlockStateProperties.SOUTH) && required.getValue(BlockStateProperties.SOUTH) && !existing.getValue(BlockStateProperties.SOUTH)) return true;
+            if (required.hasProperty(BlockStateProperties.WEST) && required.getValue(BlockStateProperties.WEST) && !existing.getValue(BlockStateProperties.WEST)) return true;
         }
         return false;
     }
 
     public boolean isPointValid() {
-        return isPointValid(hit.getPos(), hit.getBlockPos(), hit.getSide());
+        return isPointValid(hit.getLocation(), hit.getBlockPos(), hit.getDirection());
     }
 
-    private boolean isPointValid(Vec3d point, BlockPos pos, Direction direction) {
+    private boolean isPointValid(Vec3 point, BlockPos pos, Direction direction) {
         if (!PrinterUtils.isPointInRange(point, printer.placeRange.get())) return false;
 
         if ((!printer.wallPlace.get() || fluid) && !PrinterUtils.isPointVisible(point, pos, direction)) return false;
@@ -419,12 +428,12 @@ public class BlockPrint {
 
     // Gets a series of yaws to simulate when placing
     private List<Float> getSimulationYaws(float legitYaw) {
-        if (required.contains(Properties.ROTATION)) {
+        if (required.hasProperty(BlockStateProperties.ROTATION_16)) {
             return ROTATION_YAWS;
-        } else if (required.contains(Properties.HORIZONTAL_FACING) ||
-            required.contains(Properties.FACING) ||
-            required.contains(Properties.BLOCK_FACE) ||
-            required.contains(Properties.ORIENTATION)) {
+        } else if (required.hasProperty(BlockStateProperties.HORIZONTAL_FACING) ||
+            required.hasProperty(BlockStateProperties.FACING) ||
+            required.hasProperty(BlockStateProperties.ATTACH_FACE) ||
+            required.hasProperty(BlockStateProperties.ORIENTATION)) {
             return CARDINAL_YAWS;
         }
         return List.of(legitYaw);
@@ -432,11 +441,11 @@ public class BlockPrint {
 
     // Gets a series of pitches to simulate when placing
     private List<Float> getSimulationPitches(float legitPitch) {
-        if (required.contains(Properties.FACING) ||
-            required.contains(Properties.VERTICAL_DIRECTION) ||
-            required.contains(Properties.ORIENTATION) ||
-            required.contains(Properties.BLOCK_FACE) ||
-            required.contains(Properties.ROTATION)) {
+        if (required.hasProperty(BlockStateProperties.FACING) ||
+            required.hasProperty(BlockStateProperties.VERTICAL_DIRECTION) ||
+            required.hasProperty(BlockStateProperties.ORIENTATION) ||
+            required.hasProperty(BlockStateProperties.ATTACH_FACE) ||
+            required.hasProperty(BlockStateProperties.ROTATION_16)) {
             return VERTICAL_PITCHES;
         }
         return List.of(legitPitch);

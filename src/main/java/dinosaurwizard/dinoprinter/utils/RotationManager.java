@@ -20,13 +20,12 @@ import meteordevelopment.meteorclient.utils.PreInit;
 import meteordevelopment.meteorclient.utils.PostInit;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
-import net.minecraft.client.input.Input;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec2f;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.PlayerInput;
-
+import net.minecraft.client.player.ClientInput;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.phys.Vec2;
+import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -82,13 +81,13 @@ public class RotationManager {
     }
 
     private static void setPrePlayerRotation() {
-        preYaw = mc.player.getYaw();
-        prePitch = mc.player.getPitch();
+        preYaw = mc.player.getYRot();
+        prePitch = mc.player.getXRot();
     }
 
     private static void setPlayerRotation(float yaw, float pitch) {
-        mc.player.setYaw(yaw);
-        mc.player.setPitch(pitch);
+        mc.player.setYRot(yaw);
+        mc.player.setXRot(pitch);
     }
 
     private static void setServerRotation(float yaw, float pitch) {
@@ -192,17 +191,17 @@ public class RotationManager {
         return printer != null && rotating && printer.rotateLegitMove.get();
     }
 
-    public static double getYaw(Vec3d pos) {
-        return mc.player.getYaw() + MathHelper.wrapDegrees((float) Math.toDegrees(Math.atan2(pos.getZ() - mc.player.getZ(), pos.getX() - mc.player.getX())) - 90f - mc.player.getYaw());
+    public static double getYaw(Vec3 pos) {
+        return mc.player.getYRot() + Mth.wrapDegrees((float) Math.toDegrees(Math.atan2(pos.z() - mc.player.getZ(), pos.x() - mc.player.getX())) - 90f - mc.player.getYRot());
     }
 
-    public static double getPitch(Vec3d pos) {
-        double diffX = pos.getX() - mc.player.getX();
-        double diffY = pos.getY() - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
-        double diffZ = pos.getZ() - mc.player.getZ();
+    public static double getPitch(Vec3 pos) {
+        double diffX = pos.x() - mc.player.getX();
+        double diffY = pos.y() - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
+        double diffZ = pos.z() - mc.player.getZ();
         double diffXZ = Math.sqrt(diffX * diffX + diffZ * diffZ);
 
-        return mc.player.getPitch() + MathHelper.wrapDegrees((float) -Math.toDegrees(Math.atan2(diffY, diffXZ)) - mc.player.getPitch());
+        return mc.player.getXRot() + Mth.wrapDegrees((float) -Math.toDegrees(Math.atan2(diffY, diffXZ)) - mc.player.getXRot());
     }
 
     /**
@@ -213,20 +212,20 @@ public class RotationManager {
     * @date 2026-10-10
     **/
 
-    public static void setRotationPlayerInput(Input input) {
-        input.playerInput = getInputFromRelativeYaw(input.playerInput);
+    public static void setRotationPlayerInput(ClientInput input) {
+        input.keyPresses = getInputFromRelativeYaw(input.keyPresses);
 
-        int x = (input.playerInput.left() ? 1 : 0) - (input.playerInput.right() ? 1 : 0);
-        int y = (input.playerInput.forward() ? 1 : 0) - (input.playerInput.backward() ? 1 : 0);
-        input.movementVector = new Vec2f(x, y).normalize();
+        int x = (input.keyPresses.left() ? 1 : 0) - (input.keyPresses.right() ? 1 : 0);
+        int y = (input.keyPresses.forward() ? 1 : 0) - (input.keyPresses.backward() ? 1 : 0);
+        input.moveVector = new Vec2(x, y).normalized();
     }
 
-    private static PlayerInput getInputFromRelativeYaw(PlayerInput input) {
+    private static Input getInputFromRelativeYaw(Input input) {
         int strafe = (input.left() ? 1 : 0) - (input.right() ? 1 : 0);
         int forward = (input.forward() ? 1 : 0) - (input.backward() ? 1 : 0);
         if (strafe == 0 && forward == 0) return input;
 
-        double deltaYawRad = Math.toRadians(mc.player.getYaw() - serverYaw);
+        double deltaYawRad = Math.toRadians(mc.player.getYRot() - serverYaw);
         double cos = Math.cos(deltaYawRad);
         double sin = Math.sin(deltaYawRad);
         double newStrafe = strafe * cos - forward * sin;
@@ -262,7 +261,7 @@ public class RotationManager {
             pressRight = true;
         }
 
-        return new PlayerInput(pressForward, pressBackward, pressLeft, pressRight, input.jump(), input.sneak(), input.sprint());
+        return new Input(pressForward, pressBackward, pressLeft, pressRight, input.jump(), input.shift(), input.sprint());
     }
 
     private static class Rotation {
@@ -278,7 +277,7 @@ public class RotationManager {
         }
 
         public void sendPacket() {
-            mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, mc.player.isOnGround(), mc.player.horizontalCollision));
+            mc.getConnection().send(new ServerboundMovePlayerPacket.Rot(yaw, pitch, mc.player.onGround(), mc.player.horizontalCollision));
         }
 
         public void runCallback() {

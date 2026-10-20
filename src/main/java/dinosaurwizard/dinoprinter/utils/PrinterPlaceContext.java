@@ -10,44 +10,44 @@
 
 package dinosaurwizard.dinoprinter.utils;
 
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemPlacementContext;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.phys.BlockHitResult;
 
-public class PrinterPlaceContext extends ItemPlacementContext {
+public class PrinterPlaceContext extends BlockPlaceContext {
 
     private final float yaw;
     private final float pitch;
     private final boolean sneaking;
 
-    public PrinterPlaceContext(PlayerEntity player, float yaw, float pitch, boolean sneaking, Hand hand, ItemStack stack, BlockHitResult hitResult) {
-        super(player.getEntityWorld(), player, hand, stack, hitResult);
+    public PrinterPlaceContext(Player player, float yaw, float pitch, boolean sneaking, InteractionHand hand, ItemStack stack, BlockHitResult hitResult) {
+        super(player.level(), player, hand, stack, hitResult);
         this.yaw = yaw;
         this.pitch = pitch;
         this.sneaking = sneaking;
     }
 
     @Override
-    public Direction getPlayerLookDirection() {
+    public Direction getNearestLookingDirection() {
         return getEntityFacingOrder()[0];
     }
 
     @Override
-    public Direction getVerticalPlayerLookDirection() {
+    public Direction getNearestLookingVerticalDirection() {
         return pitch < 0.0F ? Direction.UP : Direction.DOWN;
     }
 
     @Override
-    public Direction[] getPlacementDirections() {
+    public Direction[] getNearestLookingDirections() {
         Direction[] directions = getEntityFacingOrder();
-        if (this.canReplaceExisting) {
+        if (this.replaceClicked) {
             return directions;
         } else {
-            Direction direction = this.getSide();
+            Direction direction = this.getClickedFace();
             int i = 0;
 
             while (i < directions.length && directions[i] != direction.getOpposite()) {
@@ -64,27 +64,27 @@ public class PrinterPlaceContext extends ItemPlacementContext {
     }
 
     @Override
-    public Direction getHorizontalPlayerFacing() {
-        return Direction.fromHorizontalDegrees(yaw);
+    public Direction getHorizontalDirection() {
+        return Direction.fromYRot(yaw);
     }
 
     @Override
-    public boolean shouldCancelInteraction() {
+    public boolean isSecondaryUseActive() {
         return sneaking;
     }
 
     @Override
-    public float getPlayerYaw() {
+    public float getRotation() {
         return yaw;
     }
 
     public Direction[] getEntityFacingOrder() {
         float f = pitch * (float) (Math.PI / 180.0);
         float g = -yaw * (float) (Math.PI / 180.0);
-        float h = MathHelper.sin(f);
-        float i = MathHelper.cos(f);
-        float j = MathHelper.sin(g);
-        float k = MathHelper.cos(g);
+        float h = Mth.sin(f);
+        float i = Mth.cos(f);
+        float j = Mth.sin(g);
+        float k = Mth.cos(g);
         boolean bl = j > 0.0F;
         boolean bl2 = h < 0.0F;
         boolean bl3 = k > 0.0F;
