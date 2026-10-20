@@ -10,7 +10,7 @@ fabric-loader = "0.19.3"
 loom = "1.17-SNAPSHOT"
 
 # Meteor (https://github.com/MeteorDevelopment/meteor-client/)
-meteor = "26.1.2-SNAPSHOT"
+meteor = "26.2-SNAPSHOT"
 
 # Mods
 litematica = "0.28.8"
