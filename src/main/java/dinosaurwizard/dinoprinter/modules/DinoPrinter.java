@@ -28,6 +28,7 @@ import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
 import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.SlotUtils;
+import meteordevelopment.meteorclient.utils.player.SwingMode;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
@@ -40,7 +41,6 @@ import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -467,7 +467,7 @@ public class DinoPrinter extends Module {
                     if (!Level.isInSpawnableBounds(blockPos)) continue;
 
                     if (BlockPrint.isValid(blockPos, required, existing, this)) {
-                        BlockPrint blockPrint = new BlockPrint(new BlockPos(blockPos), required, existing, this);
+                        BlockPrint blockPrint = new BlockPrint(blockPos.immutable(), required, existing, this);
                         if (blockPrint.canPlace()) {
                             blockPrints.add(blockPrint);
                         }
@@ -475,7 +475,7 @@ public class DinoPrinter extends Module {
                     }
 
                     if (interact.get() && BlockInteract.isValid(required, existing)) {
-                        BlockInteract blockInteract = new BlockInteract(new BlockPos(blockPos), this);
+                        BlockInteract blockInteract = new BlockInteract(blockPos.immutable(), this);
                         if (!cachedInteracts.contains(blockInteract) && blockInteract.canInteract()) {
                             blockInteracts.add(blockInteract);
                         }
@@ -768,10 +768,10 @@ public class DinoPrinter extends Module {
         // Buckets have their own unique logic
         if (blockPrint.fluid) {
             mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
-            swingHand();
+            SwingMode.of(swing.get()).interactSwing(InteractionHand.MAIN_HAND);
         // Otherwise do standard interaction
         } else if (mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, blockPrint.hit).consumesAction()) {
-            swingHand();
+            SwingMode.of(swing.get()).interactSwing(InteractionHand.MAIN_HAND);
         }
 
         if (autoSwitch.get() && swapBack.get()) InvUtils.swapBack();
@@ -812,7 +812,7 @@ public class DinoPrinter extends Module {
         }
 
         if (mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, blockInteract.hit).consumesAction()) {
-            swingHand();
+            SwingMode.of(swing.get()).interactSwing(InteractionHand.MAIN_HAND);
         }
 
         // Go back to our old inputs
@@ -821,11 +821,6 @@ public class DinoPrinter extends Module {
             mc.getConnection().send(new ServerboundPlayerInputPacket(old));
             mc.player.setShiftKeyDown(isSneaking);
         }
-    }
-
-    private void swingHand() {
-        if (swing.get()) mc.player.swing(InteractionHand.MAIN_HAND);
-        else mc.getConnection().send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
     }
 
     /// Rendering

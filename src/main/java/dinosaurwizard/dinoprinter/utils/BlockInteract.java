@@ -13,7 +13,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeverBlock;
-import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.RedstoneWireBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.BlockHitResult;
@@ -67,9 +67,9 @@ public class BlockInteract {
         } else if (block instanceof LeverBlock && required.hasProperty(BlockStateProperties.POWERED) && existing.hasProperty(BlockStateProperties.POWERED)) {
             return required.getValue(BlockStateProperties.POWERED) != existing.getValue(BlockStateProperties.POWERED);
         // Wire Connection - Redstone
-        } else if (block instanceof RedStoneWireBlock) {
-            return (RedStoneWireBlock.isCross(existing) && RedStoneWireBlock.isDot(required)) || 
-                   (RedStoneWireBlock.isCross(required) && RedStoneWireBlock.isDot(existing));
+        } else if (block instanceof RedstoneWireBlock) {
+            return (RedstoneWireBlock.isCross(existing) && RedstoneWireBlock.isDot(required)) || 
+                   (RedstoneWireBlock.isCross(required) && RedstoneWireBlock.isDot(existing));
         }
 
         return false;
